@@ -58,6 +58,10 @@ app.use(cors({
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
+<<<<<<< HEAD
+=======
+
+>>>>>>> 2ad6df5 (Your commit message describing the changes)
 
 // Apply rate limiting to authentication routes to prevent brute-force attacks
 const authLimiter = rateLimit({
