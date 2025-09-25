@@ -1,6 +1,5 @@
 // --- Module Imports ---
 const express = require('express');
-const mysql = require('mysql2/promise'); 
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const bcrypt = require('bcrypt');
@@ -8,18 +7,24 @@ const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
-const session = require('express-session');
+const session = require('express-session'); 
+const MySQLStore = require('express-mysql-session')(session);
 const axios = require('axios'); // For making HTTP requests to Safaricom API
 
+<<<<<<< HEAD
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
 }
 
 
+=======
+require('dotenv').config(); // This will look for .env in the current directory
+const db = require('./db'); // Import the centralized database connection
+>>>>>>> b86b76a (fix: Configure database connection for Railway)
 
 // --- Express App Initialization ---
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000; // Use the standard PORT environment variable
 
 // --- Environment Setup ---
 const isProduction = process.env.NODE_ENV === 'production';
@@ -59,6 +64,9 @@ app.use(bodyParser.json()); // Middleware to parse incoming request bodies in JS
 if (isProduction) {
   app.set('trust proxy', 1); // trust first proxy
 }
+
+const sessionStore = new MySQLStore({}, db);
+
 app.use(session({
   secret: process.env.SESSION_SECRET,
   resave: false,
@@ -68,22 +76,13 @@ app.use(session({
     httpOnly: true, // Prevents client-side JS from accessing the cookie
     sameSite: isProduction ? 'none' : 'lax', // 'none' for cross-domain requests in prod, 'lax' for dev
     maxAge: 24 * 60 * 60 * 1000 // e.g., 24 hours
-  }
+  },
+  store: sessionStore // Use MySQL to store sessions
 }));
 
 // --- Passport Setup ---
 app.use(passport.initialize());
 app.use(passport.session());
-// --- Database Connection Pool ---
-const db = mysql.createPool({ 
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_DATABASE,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
-});
 
 
 // --- Passport Google Strategy ---
