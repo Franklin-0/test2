@@ -16,6 +16,9 @@ const axios = require('axios'); // For making HTTP requests to Safaricom API
 require('dotenv').config(); // This will look for .env in the current directory
 const db = require('./db'); // Import the centralized database connection
 
+const logger = require('./logger'); // Import the winston logger
+
+
 // --- Express App Initialization ---
 const app = express();
 const PORT = process.env.PORT || 3000; // Use the standard PORT environment variable
@@ -28,17 +31,32 @@ const GOOGLE_CALLBACK_URL = isProduction ? process.env.GOOGLE_CALLBACK_URL_PROD 
 // --- Middleware Setup ---
 // CORS (Cross-Origin Resource Sharing) middleware to allow requests from the frontend
 
+const allowedOrigins = [
+  "http://localhost:5501",
+  "https://testfront2.onrender.com"
+];
+
 app.use(cors({
-  origin: 'https://testfront2.onrender.com',
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    } else {
+      return callback(new Error("Not allowed by CORS: " + origin));
+    }
+  },
   methods: ["GET", "POST", "PUT", "DELETE"],
   credentials: true
 }));
 
 
+
 // --- Security Middleware ---
+// Sets various HTTP headers for security.
+// We must configure the cross-origin policy to allow our frontend to fetch resources.
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
-})); // Sets various HTTP headers for security
+}));
 
 // Apply rate limiting to authentication routes to prevent brute-force attacks
 const authLimiter = rateLimit({
@@ -126,7 +144,7 @@ passport.use(new GoogleStrategy({
         // Send a welcome email to the new user
         const subject = 'Welcome to Fashionable Baby Shoes!';
         const html = `<h1>Welcome, ${displayName}!</h1><p>Thank you for signing up with Google. We're excited to have you with us. Happy shopping!</p>`;
-        sendEmail(email, subject, html).catch(console.error);
+        sendEmail(email, subject, html).catch(err => logger.error('Failed to send welcome email to new Google user', { error: err }));
 
         newUser.isNewUser = true; // Mark as a new user
         return done(null, newUser); // Passport proceeds with the newly created user object
@@ -180,7 +198,7 @@ async function sendEmail(to, subject, html) {
     try {
       await transporter.verify();
     } catch (verifyErr) {
-      console.error('Mailer configuration error:', verifyErr);
+      logger.error('Mailer configuration error:', { error: verifyErr });
       throw verifyErr; // Stop the process if mailer config is bad
     }
 
@@ -190,10 +208,10 @@ async function sendEmail(to, subject, html) {
       subject,
       html,
     });
-    console.log(`Email sent successfully to ${to}`);
+    logger.info(`Email sent successfully to ${to}`);
   } catch (err) {
     // Re-throw the error so the calling function knows something went wrong.
-    console.error(`Failed to send email to ${to}. Subject: "${subject}". Error:`, err);
+    logger.error(`Failed to send email to ${to}. Subject: "${subject}".`, { error: err });
     throw err;
   }
 }
@@ -271,7 +289,7 @@ app.post('/api/register', async (req, res) => {
     // Send a welcome email to the new user
     const subject = 'Welcome to Fashionable Baby Shoes!';
     const html = `<h1>Welcome, ${name || 'friend'}!</h1><p>Thank you for signing up. We're excited to have you with us. Happy shopping!</p>`;
-    sendEmail(email, subject, html).catch(console.error); // Send email but don't wait for it to complete
+    sendEmail(email, subject, html).catch(err => logger.error('Failed to send welcome email after registration', { error: err })); // Send email but don't wait for it to complete
 
     res.status(201).json({ success: true, userId: result.insertId });
   } catch (err) {
@@ -309,16 +327,16 @@ app.post('/api/login', async (req, res) => {
       // Upon successful login, merge the guest cart (if any) into the database.
       mergeCartsOnLogin(req.session, user.id)
         .then(() => {
-          console.log(`User ${user.id} logged in. Carts merged.`);
+          logger.info(`User ${user.id} logged in. Carts merged.`);
           // Send a "welcome back" email
           const subject = 'Welcome Back!';
           const html = `<h1>Welcome back, ${user.name || 'friend'}!</h1><p>We're glad to see you again. Check out our latest arrivals!</p>`;
-          sendEmail(user.email, subject, html).catch(console.error);
+          sendEmail(user.email, subject, html).catch(err => logger.error('Failed to send "welcome back" email', { error: err }));
 
           res.json({ success: true, message: 'Login successful', user: { name: user.name } });
         })
         .catch(mergeErr => {
-          console.error("Cart merge failed on login:", mergeErr);
+          logger.error("Cart merge failed on login:", { error: mergeErr });
           res.status(500).json({ error: 'Login successful, but failed to merge cart.' });
         });
 
@@ -364,7 +382,7 @@ app.post('/api/forgot-password', async (req, res) => {
     // This will now catch errors from both the database query and sendEmail.
     // It returns a detailed error to the frontend for easier debugging.
     // IMPORTANT: For production, you might want to revert to a more generic error message.
-    console.error("FORGOT PASSWORD ERROR:", err);
+    logger.error("FORGOT PASSWORD ERROR:", { error: err });
     res.status(500).json({ error: 'Failed to send reset email.', details: err.message });
   }
 });
@@ -446,7 +464,7 @@ app.get('/api/cart', (req, res) => {
     res.json(cartItems);
   })
   .catch(error => {
-    console.error('Error fetching DB cart:', error);
+    logger.error('Error fetching DB cart:', { error });
     res.status(500).json({ error: 'Could not retrieve cart.' });
   });
 });
@@ -521,7 +539,7 @@ app.post('/api/cart', async (req, res) => {
     
     res.status(200).json(req.session.cart);
   } catch (error) {
-    console.error('Error adding to cart:', error);
+    logger.error('Error adding to cart:', { error });
     res.status(500).json({ error: 'Could not add item to cart.' });
   }
 });
@@ -557,7 +575,7 @@ app.put('/api/cart', async (req, res) => {
       req.session.cart = updatedCart;
       return res.status(200).json(updatedCart);
     } catch (error) {
-      console.error('Error updating DB cart:', error);
+      logger.error('Error updating DB cart:', { error });
       return res.status(500).json({ error: 'Could not update cart.' });
     }
   }
@@ -609,7 +627,7 @@ app.get('/api/cart/count', async (req, res) => {
       const [[{ count }]] = await db.query('SELECT SUM(quantity) as count FROM cart_items WHERE user_id = ?', [req.user.id]);
       return res.json({ count: count || 0 });
     } catch (error) {
-      console.error("Error getting DB cart count:", error);
+      logger.error("Error getting DB cart count:", { error });
       return res.json({ count: 0 });
     }
   }
@@ -654,7 +672,7 @@ app.post('/api/cart/merge', async (req, res) => {
     await Promise.all(mergePromises);
     res.status(200).json({ success: true, message: 'Cart merged successfully.' });
   } catch (error) {
-    console.error('Error merging cart into DB:', error);
+    logger.error('Error merging cart into DB:', { error });
     res.status(500).json({ error: 'Could not merge cart.' });
   }
 });
@@ -673,7 +691,7 @@ app.get('/api/favourites', ensureAuthenticated, async (req, res) => {
     );
     res.json(favourites);
   } catch (error) {
-    console.error('Error fetching favourites:', error);
+    logger.error('Error fetching favourites:', { error });
     res.status(500).json({ error: 'Could not retrieve favourites.' });
   }
 });
@@ -695,7 +713,7 @@ app.post('/api/favourites', ensureAuthenticated, async (req, res) => {
       // It's already a favourite, which is not an error for the user.
       return res.status(200).json({ success: true, message: 'Product is already in favourites.' });
     }
-    console.error('Error adding to favourites:', error);
+    logger.error('Error adding to favourites:', { error });
     res.status(500).json({ error: 'Could not add product to favourites.' });
   }
 });
@@ -720,7 +738,7 @@ app.post('/api/favourites/merge', ensureAuthenticated, async (req, res) => {
 
     res.status(200).json({ success: true, message: 'Local favourites merged successfully.' });
   } catch (error) {
-    console.error('Error merging favourites:', error);
+    logger.error('Error merging favourites:', { error });
     res.status(500).json({ error: 'Could not merge favourites.' });
   }
 });
@@ -738,7 +756,7 @@ app.delete('/api/favourites/:productId', ensureAuthenticated, async (req, res) =
     await db.query('DELETE FROM favourites WHERE user_id = ? AND product_id = ?', [req.user.id, productId]);
     res.status(200).json({ success: true, message: 'Product removed from favourites.' });
   } catch (error) {
-    console.error('Error removing from favourites:', error);
+    logger.error('Error removing from favourites:', { error });
     res.status(500).json({ error: 'Could not remove product from favourites.' });
   }
 });
@@ -754,7 +772,7 @@ async function mergeCartsOnLogin(session, userId) {
     return; // Nothing to merge
   }
 
-  console.log(`Merging ${guestCart.length} guest cart items for user ${userId}.`);
+  logger.info(`Merging ${guestCart.length} guest cart items for user ${userId}.`);
 
   const mergePromises = guestCart.map(item => {
     const [productId, size] = item.id.split('-');
@@ -788,8 +806,8 @@ app.get('/auth/google/callback',
     // Successful authentication. The user is now logged in (req.user exists).
     // Merge guest cart with user account if necessary.
     mergeCartsOnLogin(req.session, req.user.id)
-      .then(() => console.log(`Cart merged for Google user ${req.user.id}`))
-      .catch(err => console.error("Google login cart merge failed:", err));
+      .then(() => logger.info(`Cart merged for Google user ${req.user.id}`))
+      .catch(err => logger.error("Google login cart merge failed:", { error: err }));
 
     const { name, isNewUser } = req.user;
     res.redirect(`${FRONTEND_URL}/Frontend-babyshoe/auth-callback.html?name=${encodeURIComponent(name)}&isNewUser=${isNewUser}`);
@@ -805,7 +823,7 @@ app.post('/api/logout', (req, res, next) => {
       return next(err); // Pass errors to the error handler
     }
     req.session.destroy((err) => {
-      if (err) console.error("Error destroying session:", err); // Log if session destruction fails
+      if (err) logger.error("Error destroying session:", { error: err }); // Log if session destruction fails
       res.clearCookie('connect.sid'); // Tell the browser to clear the session cookie
       res.json({ success: true, message: "You have been logged out." });
     });
@@ -868,7 +886,7 @@ const getMpesaAccessToken = async (req, res, next) => {
     req.mpesa_access_token = response.data.access_token;
     next();
   } catch (err) {
-    console.error('Failed to get M-Pesa access token:', err.response ? err.response.data : err.message);
+    logger.error('Failed to get M-Pesa access token', { error: err.response ? err.response.data : err.message });
     res.status(500).json({ error: 'Could not get M-Pesa access token' });
   }
 };
@@ -899,7 +917,7 @@ app.post('/api/stk-push', getMpesaAccessToken, async (req, res) => {
       serverCalculatedSubtotal += product.price * item.quantity;
     }
   } catch (dbError) {
-    console.error("Database error during amount calculation:", dbError);
+    logger.error("Database error during amount calculation:", { error: dbError });
     return res.status(500).json({ error: 'Could not verify product prices.' });
   }
 
@@ -948,11 +966,11 @@ app.post('/api/stk-push', getMpesaAccessToken, async (req, res) => {
 
     // You will need an 'orders' table for this to work.
     await db.query('INSERT INTO orders SET ?', orderData);
-    console.log(`✅ Order pending, saved with CheckoutRequestID: ${checkoutRequestID}`);
+    logger.info(`✅ Order pending, saved with CheckoutRequestID: ${checkoutRequestID}`);
 
     res.status(200).json(response.data);
   } catch (err) {
-    console.error('STK Push Error:', err.response ? err.response.data : err.message);
+    logger.error('STK Push Error:', { error: err.response ? err.response.data : err.message });
     res.status(500).json({ error: 'Failed to initiate M-Pesa payment.', details: err.response ? err.response.data : null });
   }
 });
@@ -961,31 +979,31 @@ app.post('/api/stk-push', getMpesaAccessToken, async (req, res) => {
  * POST /api/mpesa-callback - Receives the payment confirmation from Safaricom.
  */
 app.post('/api/mpesa-callback', (req, res) => {
-  console.log('--- M-Pesa Callback Received ---');
-  console.log(JSON.stringify(req.body, null, 2));
+  logger.info('--- M-Pesa Callback Received ---', { body: req.body });
   
   // Safely access nested properties
   const callbackData = req.body && req.body.Body && req.body.Body.stkCallback;
 
   if (!callbackData) {
-    console.error('Invalid M-Pesa callback format received.');
+    logger.error('Invalid M-Pesa callback format received.');
     return res.status(200).json({ ResultCode: 1, ResultDesc: 'Failed' }); // Acknowledge but note error
   }
 
   const resultCode = callbackData.ResultCode;
+  const checkoutRequestID = callbackData.CheckoutRequestID;
 
   if (resultCode === 0) {
     // Payment was successful
-    const checkoutRequestID = callbackData.CheckoutRequestID;
-    console.log(`✅ Payment successful! Updating order with CheckoutRequestID: ${checkoutRequestID}`);
+    logger.info(`✅ Payment successful! Updating order with CheckoutRequestID: ${checkoutRequestID}`);
     // Here you would typically:
     // 1. Find the order: `UPDATE orders SET status = 'paid' WHERE mpesa_checkout_id = ?`
     // 2. Verify the amount paid from `callbackData.CallbackMetadata`.
     // 3. Clear the user's cart.
     // 4. Send a confirmation email to the user.
+    // 5. Update the order with the M-Pesa receipt number.
   } else {
     // Payment failed or was cancelled
-    console.error(`❌ Payment failed. ResultCode: ${resultCode}, Reason: ${callbackData.ResultDesc}`);
+    logger.error(`❌ M-Pesa Payment failed for CheckoutRequestID: ${checkoutRequestID}`, { resultCode: resultCode, reason: callbackData.ResultDesc });
   }
 
   // Acknowledge receipt of the callback to Safaricom
@@ -997,10 +1015,14 @@ app.post('/api/mpesa-callback', (req, res) => {
 // First, test the database connection. If successful, start the Express server.
 db.getConnection()
   .then(connection => {
-    console.log('Connected to MySQL');
+    logger.info('Successfully connected to the database pool.');
     connection.release();
-    app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+    app.listen(PORT, () => logger.info(`Server running on port ${PORT}`));
   }).catch(err => {
-    console.error('Failed to connect to database.', err);
+    // Add more context to the startup error log
+    const dbHost = process.env.MYSQLHOST || process.env.DB_HOST || 'localhost';
+    logger.error(`Failed to connect to database on startup at host: ${dbHost}.`, { 
+      error: { code: err.code, message: err.message } 
+    });
     process.exit(1);
   });
