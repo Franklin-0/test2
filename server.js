@@ -23,28 +23,16 @@ const PORT = process.env.PORT || 3000; // Use the standard PORT environment vari
 
 // --- Environment Setup ---
 const isProduction = process.env.NODE_ENV === 'production';
-const FRONTEND_URL = isProduction ? process.env.FRONTEND_URL_PROD : process.env.FRONTEND_URL_DEV;
-const GOOGLE_CALLBACK_URL = isProduction ? process.env.GOOGLE_CALLBACK_URL_PROD : process.env.GOOGLE_CALLBACK_URL_DEV;
+const API_BASE_URL = process.env.API_BASE_URL || `http://localhost:${PORT}`;
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5501';
+const GOOGLE_CALLBACK_URL = `${API_BASE_URL}/auth/google/callback`;
 
 // --- Middleware Setup ---
-// CORS (Cross-Origin Resource Sharing) middleware to allow requests from the frontend
-
-const allowedOrigins = [
-  FRONTEND_URL, // This uses the URL from your .env file (e.g., http://127.0.0.1:5501)
-  'http://localhost:5501', // Also allow the localhost variant for flexibility
-  
-  process.env.FRONTEND_URL_PROD // This is for your future production deployment
-];
-
+// CORS (Cross-Origin Resource Sharing) middleware to allow requests from your production frontend.
 app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true); // allow Postman / curl
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-    return callback(new Error("Not allowed by CORS: " + origin));
-  },
-  credentials: true
+  origin: "https://testfront2.onrender.com", // Allow only your frontend
+  methods: ["GET", "POST", "PUT", "DELETE"], // Explicitly allow these methods
+  credentials: true // This is crucial for allowing cookies/sessions
 }));
 
 // --- Security Middleware ---
@@ -360,7 +348,7 @@ app.post('/api/forgot-password', async (req, res) => {
     // Store the token and its expiration date in the database for the user.
     await db.query('UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?', [token, expires, user.id]);
 
-    const resetUrl = `${FRONTEND_URL}/Frontend-babyshoe/reset-password.html?token=${token}`;
+    const resetUrl = `${FRONTEND_URL}/reset-password.html?token=${token}`;
     const subject = 'Password Reset Request';
     const html = `<p>You requested a password reset. Click the link below to reset your password:</p><a href="${resetUrl}">${resetUrl}</a><p>This link will expire in one hour.</p>`;
 
@@ -802,7 +790,7 @@ app.get('/auth/google/callback',
       .catch(err => logger.error("Google login cart merge failed:", { error: err }));
 
     const { name, isNewUser } = req.user;
-    res.redirect(`${FRONTEND_URL}/Frontend-babyshoe/auth-callback.html?name=${encodeURIComponent(name)}&isNewUser=${isNewUser}`);
+    res.redirect(`${FRONTEND_URL}/auth-callback.html?name=${encodeURIComponent(name)}&isNewUser=${isNewUser}`);
 
   }
 );
@@ -931,7 +919,7 @@ app.post('/api/stk-push', getMpesaAccessToken, async (req, res) => {
     PartyA: phone,
     PartyB: shortcode,
     PhoneNumber: phone,
-    CallBackURL: process.env.MPESA_CALLBACK_URL,
+    CallBackURL: `${API_BASE_URL}/api/mpesa-callback`,
     AccountReference: 'FashionableBabyShoes',
     TransactionDesc: 'Payment for shoes'
   };
