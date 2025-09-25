@@ -47,7 +47,9 @@ app.use(cors({
 }));
 
 // --- Security Middleware ---
-app.use(helmet()); // Sets various HTTP headers for security
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+})); // Sets various HTTP headers for security
 
 // Apply rate limiting to authentication routes to prevent brute-force attacks
 const authLimiter = rateLimit({
