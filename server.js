@@ -13,16 +13,8 @@ const session = require('express-session');
 const MySQLStore = require('express-mysql-session')(session);
 const axios = require('axios'); // For making HTTP requests to Safaricom API
 
-<<<<<<< HEAD
-if (process.env.NODE_ENV !== 'production') {
-  require('dotenv').config();
-}
-
-
-=======
 require('dotenv').config(); // This will look for .env in the current directory
 const db = require('./db'); // Import the centralized database connection
->>>>>>> b86b76a (fix: Configure database connection for Railway)
 
 // --- Express App Initialization ---
 const app = express();
