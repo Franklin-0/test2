@@ -12,8 +12,9 @@ const session = require('express-session');
 const axios = require('axios'); // For making HTTP requests to Safaricom API
 
 if (process.env.NODE_ENV !== 'production') {
-  require('dotenv').config(); // only load .env locally
+  require('dotenv').config();
 }
+
 
 
 // --- Express App Initialization ---
