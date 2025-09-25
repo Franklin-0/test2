@@ -29,21 +29,11 @@ const GOOGLE_CALLBACK_URL = isProduction ? process.env.GOOGLE_CALLBACK_URL_PROD 
 // CORS (Cross-Origin Resource Sharing) middleware to allow requests from the frontend
 
 app.use(cors({
-  origin: 'https://testfront2.onrender.com', // allow only your frontend
+  origin: 'https://testfront2.onrender.com',
   methods: ["GET", "POST", "PUT", "DELETE"],
   credentials: true
-}
-
-app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true); // allow Postman / curl
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-    return callback(new Error("Not allowed by CORS: " + origin));
-  },
-  credentials: true
 }));
+
 
 // --- Security Middleware ---
 app.use(helmet({
