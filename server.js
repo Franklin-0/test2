@@ -11,7 +11,10 @@ const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const session = require('express-session');
 const axios = require('axios'); // For making HTTP requests to Safaricom API
 
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+if (process.env.NODE_ENV !== 'production') {
+  require('dotenv').config(); // only load .env locally
+}
+
 
 // --- Express App Initialization ---
 const app = express();
