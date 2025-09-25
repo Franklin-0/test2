@@ -28,12 +28,11 @@ const GOOGLE_CALLBACK_URL = isProduction ? process.env.GOOGLE_CALLBACK_URL_PROD 
 // --- Middleware Setup ---
 // CORS (Cross-Origin Resource Sharing) middleware to allow requests from the frontend
 
-const allowedOrigins = [
-  FRONTEND_URL, // This uses the URL from your .env file (e.g., http://127.0.0.1:5501)
-  'http://localhost:5501', // Also allow the localhost variant for flexibility
-  
-  process.env.FRONTEND_URL_PROD // This is for your future production deployment
-];
+app.use(cors({
+  origin: 'https://testfront2.onrender.com', // allow only your frontend
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  credentials: true
+}
 
 app.use(cors({
   origin: function (origin, callback) {
