@@ -15,11 +15,10 @@ const axios = require('axios'); // For making HTTP requests to Safaricom API
 
 require('dotenv').config(); // This will look for .env in the current directory
 const db = require('./db'); // Import the centralized database connection
+const mpesaRoutes = require('./routes/mpesa');
 
-const mpesaRoutes = require('./routes/mpesa'); // Import the M-Pesa router
-
-const logger = require('./logger'); // Import the winston logge
 const logger = require('./logger'); // Import the winston logger
+
 
 // --- Express App Initialization ---
 const app = express();
@@ -27,13 +26,12 @@ const PORT = process.env.PORT || 3000; // Use the standard PORT environment vari
 
 // --- Environment Setup ---
 const isProduction = process.env.NODE_ENV === 'production';
-const API_BASE_URL = process.env.API_BASE_URL || `http://localhost:${PORT}`;
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5501';
-const GOOGLE_CALLBACK_URL = `${API_BASE_URL}/auth/google/callback`;
+const FRONTEND_URL = isProduction ? process.env.FRONTEND_URL_PROD : process.env.FRONTEND_URL_DEV;
+const GOOGLE_CALLBACK_URL = isProduction ? process.env.GOOGLE_CALLBACK_URL_PROD : process.env.GOOGLE_CALLBACK_URL_DEV;
 
 // --- Middleware Setup ---
+// CORS (Cross-Origin Resource Sharing) middleware to allow requests from the frontend
 
-// CORS (Cross-Origin Resource Sharing) middleware to allow requests from both localhost (dev) and production frontend
 const allowedOrigins = [
   "http://localhost:5501",
   "https://testfront2.onrender.com"
@@ -41,7 +39,7 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin) return callback(null, true); // allow requests like Postman/curl
+    if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     } else {
@@ -50,17 +48,16 @@ app.use(cors({
   },
   methods: ["GET", "POST", "PUT", "DELETE"],
   credentials: true
-
-
+}));
 
 
 
 // --- Security Middleware ---
-
+// Sets various HTTP headers for security.
+// We must configure the cross-origin policy to allow our frontend to fetch resources.
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
-
 
 // Apply rate limiting to authentication routes to prevent brute-force attacks
 const authLimiter = rateLimit({
@@ -372,7 +369,7 @@ app.post('/api/forgot-password', async (req, res) => {
     // Store the token and its expiration date in the database for the user.
     await db.query('UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?', [token, expires, user.id]);
 
-    const resetUrl = `${FRONTEND_URL}/reset-password.html?token=${token}`;
+    const resetUrl = `${FRONTEND_URL}/Frontend-babyshoe/reset-password.html?token=${token}`;
     const subject = 'Password Reset Request';
     const html = `<p>You requested a password reset. Click the link below to reset your password:</p><a href="${resetUrl}">${resetUrl}</a><p>This link will expire in one hour.</p>`;
 
@@ -814,7 +811,7 @@ app.get('/auth/google/callback',
       .catch(err => logger.error("Google login cart merge failed:", { error: err }));
 
     const { name, isNewUser } = req.user;
-    res.redirect(`${FRONTEND_URL}/auth-callback.html?name=${encodeURIComponent(name)}&isNewUser=${isNewUser}`);
+    res.redirect(`${FRONTEND_URL}/Frontend-babyshoe/auth-callback.html?name=${encodeURIComponent(name)}&isNewUser=${isNewUser}`);
 
   }
 );
@@ -874,150 +871,8 @@ function normalizePhone(phone) {
 }
 
 // --- M-Pesa API Routes ---
-<<<<<<< HEAD
 // All M-Pesa related routes are now handled by the dedicated router.
 app.use('/api/mpesa', mpesaRoutes);
-=======
-
-/**
- * Middleware to get M-Pesa access token.
- * This function requests an access token from the Safaricom API and attaches it to the request object.
- */
-const getMpesaAccessToken = async (req, res, next) => {
-  const consumerKey = process.env.MPESA_CONSUMER_KEY;
-  const consumerSecret = process.env.MPESA_CONSUMER_SECRET;
-  const url = 'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
-  const auth = 'Basic ' + Buffer.from(consumerKey + ':' + consumerSecret).toString('base64');
-
-  try {
-    const response = await axios.get(url, { headers: { Authorization: auth } });
-    req.mpesa_access_token = response.data.access_token;
-    next();
-  } catch (err) {
-    logger.error('Failed to get M-Pesa access token', { error: err.response ? err.response.data : err.message });
-    res.status(500).json({ error: 'Could not get M-Pesa access token' });
-  }
-};
-
-/**
- * POST /api/stk-push - Initiates an M-Pesa STK Push request.
- */
-app.post('/api/stk-push', getMpesaAccessToken, async (req, res) => {
-  const { phone: rawPhone, cart, shippingDetails } = req.body; // We will ignore the 'amount' from the body
-  const token = req.mpesa_access_token;
-  const phone = normalizePhone(rawPhone);
-
-  // Validate the required fields from the request body
-  if (!phone || !cart || !Array.isArray(cart) || cart.length === 0) {
-    return res.status(400).json({ error: 'A valid phone number (e.g., 07... or 254...) and cart details are required.' });
-  }
-
-  let serverCalculatedSubtotal = 0;
-  try {
-    // --- SERVER-SIDE AMOUNT CALCULATION ---
-    // This is a critical security step. Never trust the amount from the client.
-    for (const item of cart) {
-      // Fetch the product price from the database to prevent price tampering.
-      const [[product]] = await db.query('SELECT price FROM product WHERE id = ?', [item.productId]);
-      if (!product) {
-        return res.status(400).json({ error: `Product with ID ${item.productId} not found.` });
-      }
-      serverCalculatedSubtotal += product.price * item.quantity;
-    }
-  } catch (dbError) {
-    logger.error("Database error during amount calculation:", { error: dbError });
-    return res.status(500).json({ error: 'Could not verify product prices.' });
-  }
-
-  const shippingCost = 500; // Define shipping cost on the server
-  const serverCalculatedTotal = serverCalculatedSubtotal + shippingCost;
-
-  const url = 'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest';
-  const shortcode = process.env.MPESA_SHORTCODE;
-  const passkey = process.env.MPESA_PASSKEY;
-  const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, -3);
-  const password = Buffer.from(shortcode + passkey + timestamp).toString('base64');
-
-  const payload = {
-    BusinessShortCode: shortcode,
-    Password: password,
-    Timestamp: timestamp,
-    TransactionType: 'CustomerPayBillOnline',
-    Amount: serverCalculatedTotal, // CRITICAL: Use the server-calculated total
-    PartyA: phone,
-    PartyB: shortcode,
-    PhoneNumber: phone,
-    CallBackURL: process.env.MPESA_CALLBACK_URL,
-    AccountReference: 'FashionableBabyShoes',
-    TransactionDesc: 'Payment for shoes'
-  };
-
-  try {
-    // --- Step 1: Initiate the STK Push with Safaricom ---
-    const response = await axios.post(url, payload, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-
-    const checkoutRequestID = response.data.CheckoutRequestID;
-
-    // --- Step 2: Save the pending order to your database ---
-    // This is crucial. We save the order with a 'pending' status.
-    // The M-Pesa callback will later update this order to 'paid' or 'failed'.
-    const orderData = {
-      user_id: req.user ? req.user.id : null, // Safely get user_id if logged in, otherwise null for guest
-      status: 'pending',
-      amount: serverCalculatedTotal, // Save the correct amount to the order
-      mpesa_checkout_id: checkoutRequestID,
-      shipping_details: JSON.stringify(shippingDetails), // Store shipping info
-      items: JSON.stringify(cart) // Store the items in the order
-    };
-
-    // You will need an 'orders' table for this to work.
-    await db.query('INSERT INTO orders SET ?', orderData);
-    logger.info(`✅ Order pending, saved with CheckoutRequestID: ${checkoutRequestID}`);
-
-    res.status(200).json(response.data);
-  } catch (err) {
-    logger.error('STK Push Error:', { error: err.response ? err.response.data : err.message });
-    res.status(500).json({ error: 'Failed to initiate M-Pesa payment.', details: err.response ? err.response.data : null });
-  }
-});
-
-/**
- * POST /api/mpesa-callback - Receives the payment confirmation from Safaricom.
- */
-app.post('/api/mpesa-callback', (req, res) => {
-  logger.info('--- M-Pesa Callback Received ---', { body: req.body });
-  
-  // Safely access nested properties
-  const callbackData = req.body && req.body.Body && req.body.Body.stkCallback;
-
-  if (!callbackData) {
-    logger.error('Invalid M-Pesa callback format received.');
-    return res.status(200).json({ ResultCode: 1, ResultDesc: 'Failed' }); // Acknowledge but note error
-  }
-
-  const resultCode = callbackData.ResultCode;
-  const checkoutRequestID = callbackData.CheckoutRequestID;
-
-  if (resultCode === 0) {
-    // Payment was successful
-    logger.info(`✅ Payment successful! Updating order with CheckoutRequestID: ${checkoutRequestID}`);
-    // Here you would typically:
-    // 1. Find the order: `UPDATE orders SET status = 'paid' WHERE mpesa_checkout_id = ?`
-    // 2. Verify the amount paid from `callbackData.CallbackMetadata`.
-    // 3. Clear the user's cart.
-    // 4. Send a confirmation email to the user.
-    // 5. Update the order with the M-Pesa receipt number.
-  } else {
-    // Payment failed or was cancelled
-    logger.error(`❌ M-Pesa Payment failed for CheckoutRequestID: ${checkoutRequestID}`, { resultCode: resultCode, reason: callbackData.ResultDesc });
-  }
-
-  // Acknowledge receipt of the callback to Safaricom
-  res.status(200).json({ ResultCode: 0, ResultDesc: 'Accepted' });
-});
->>>>>>> 0362555 (Fix DB connection to use Railway env variables in production)
 
 
 // --- Server Startup ---
