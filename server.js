@@ -1,6 +1,8 @@
 // --- Module Imports ---
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const bodyParser = require('body-parser');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
@@ -51,6 +53,19 @@ app.use(cors({
   },
   credentials: true
 }));
+
+// --- Security Middleware ---
+app.use(helmet()); // Sets various HTTP headers for security
+
+// Apply rate limiting to authentication routes to prevent brute-force attacks
+const authLimiter = rateLimit({
+	windowMs: 15 * 60 * 1000, // 15 minutes
+	max: 10, // Limit each IP to 10 login/register requests per windowMs
+	standardHeaders: true,
+	legacyHeaders: false,
+});
+app.use('/api/login', authLimiter);
+app.use('/api/register', authLimiter);
 
 
 
