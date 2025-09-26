@@ -27,7 +27,8 @@ const GOOGLE_CALLBACK_URL = isProduction ? process.env.GOOGLE_CALLBACK_URL_PROD 
 const allowedOrigins = [
   'https://testfront2.onrender.com', // Your production frontend
   'http://localhost:5500',           // Common local development server port
-  'http://127.0.0.1:5500'            // Another common local dev address
+  'http://127.0.0.1:5500',           // Another common local dev address
+  'https://testfront2-onrender-com.onrender.com' // Add the alternative Render domain
 ];
 
 const corsOptions = {
