@@ -12,7 +12,11 @@ const MySQLStore = require('express-mysql-session')(session);
 const axios = require('axios'); // For making HTTP requests to Safaricom API
 const mpesaRoutes = require('./routes/mpesa'); // Import the M-Pesa router
 
-require('dotenv').config({ path: require('path').resolve(__dirname, '..', '.env') });
+// Load environment variables from a .env file in the same directory.
+// This is the standard setup. In production (like on Railway),
+// the platform's environment variables will be used automatically
+// and will take precedence if a .env file is not found.
+require('dotenv').config();
 
 // --- Express App Initialization ---
 const app = express();
