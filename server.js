@@ -37,7 +37,7 @@ app.use(cors({
 app.use(bodyParser.json()); // Middleware to parse incoming request bodies in JSON format
 
 // --- Database Connection ---
-const db = require('./db');
+const { db, dbConfig } = require('./db');
 
 // --- Session Setup ---
 // In production, ensure you're running behind a proxy (like Nginx) that handles HTTPS.
@@ -46,7 +46,7 @@ if (isProduction) {
   app.set('trust proxy', 1); // trust first proxy
 }
 
-const sessionStore = new MySQLStore({}, db);
+const sessionStore = new MySQLStore(dbConfig);
 
 app.use(session({
   secret: process.env.SESSION_SECRET || 'a_very_long_and_super_random_secret_string_!@#$_for_security',
@@ -57,7 +57,7 @@ app.use(session({
     httpOnly: true, // Prevents client-side JS from accessing the cookie
     sameSite: isProduction ? 'none' : 'lax', // 'none' for cross-domain requests in prod, 'lax' for dev
     maxAge: 24 * 60 * 60 * 1000 // e.g., 24 hours
-  }
+  },
   store: sessionStore,
 }));
 

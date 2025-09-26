@@ -41,4 +41,4 @@ const db = mysql.createPool(dbConfig);
   }
 })();
 
-module.exports = db;
+module.exports = { db, dbConfig };
