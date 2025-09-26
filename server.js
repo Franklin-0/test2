@@ -43,6 +43,8 @@ const corsOptions = {
   credentials: true // This is important for sessions/cookies
 };
 
+app.use(cors(corsOptions));
+
 app.use(bodyParser.json()); // Middleware to parse incoming request bodies in JSON format
 
 // --- Database Connection ---
