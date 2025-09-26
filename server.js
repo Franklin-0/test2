@@ -15,7 +15,6 @@ const axios = require('axios'); // For making HTTP requests to Safaricom API
 
 require('dotenv').config(); // This will look for .env in the current directory
 const db = require('./db'); // Import the centralized database connection
-const mpesaRoutes = require('./routes/mpesa');
 
 const logger = require('./logger'); // Import the winston logger
 
@@ -23,11 +22,12 @@ const logger = require('./logger'); // Import the winston logger
 // --- Express App Initialization ---
 const app = express();
 const PORT = process.env.PORT || 3000; // Use the standard PORT environment variable
+const mpesaRoutes = require('./routes/mpesa');
 
 // --- Environment Setup ---
 const isProduction = process.env.NODE_ENV === 'production';
-const FRONTEND_URL = isProduction ? process.env.FRONTEND_URL_PROD : process.env.FRONTEND_URL_DEV;
-const GOOGLE_CALLBACK_URL = isProduction ? process.env.GOOGLE_CALLBACK_URL_PROD : process.env.GOOGLE_CALLBACK_URL_DEV;
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5501';
+const GOOGLE_CALLBACK_URL = `${process.env.API_BASE_URL}/auth/google/callback`;
 
 // --- Middleware Setup ---
 // CORS (Cross-Origin Resource Sharing) middleware to allow requests from the frontend
@@ -38,16 +38,17 @@ const allowedOrigins = [
 ];
 
 app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    } else {
-      return callback(new Error("Not allowed by CORS: " + origin));
-    }
-  },
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  credentials: true
+    origin: function (origin, callback) {
+        // Allow requests with no origin (like mobile apps, Postman, or server-to-server requests)
+        if (!origin) return callback(null, true);
+        // If the origin is in our whitelist, allow it.
+        if (allowedOrigins.indexOf(origin) !== -1) {
+            return callback(null, true);
+        }
+        // Otherwise, block the request.
+        return callback(new Error('The CORS policy for this site does not allow access from the specified Origin.'), false);
+    },
+    credentials: true // This is crucial for allowing cookies/sessions to be sent from the frontend.
 }));
 
 
