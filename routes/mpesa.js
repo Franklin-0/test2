@@ -8,7 +8,7 @@ const logger = require('../logger'); //logger
 async function getToken() {
   const consumerKey = process.env.MPESA_CONSUMER_KEY;
   const consumerSecret = process.env.MPESA_CONSUMER_SECRET;
-  const url = "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials";
+  const url = "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials";
   const auth = 'Basic ' + Buffer.from(consumerKey + ':' + consumerSecret).toString('base64');
 
   const resp = await axios.get(url, { headers: { Authorization: auth } });
@@ -104,7 +104,7 @@ router.post("/stk-push", async (req, res) => {
     const password = Buffer.from(shortcode + passkey + timestamp).toString("base64");
 
     const stkResp = await axios.post(
-      "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest",
+      "https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest",
       {
         BusinessShortCode: shortcode,
         Password: password,
