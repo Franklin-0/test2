@@ -141,10 +141,11 @@ router.post("/stk-push", async (req, res) => {
 
   } catch (err) {
     const errorContext = {
-      phone: req.body.phone,
-      errorMessage: err.message,
-      details: err.response?.data || null
-    };
+  phone: req.body?.phone,
+  errorMessage: err.message,
+  details: err.response?.data || null
+};
+
     logger.error("❌ STK Push error", errorContext);
     res.status(err.response?.status || 500).json({
       error: "Failed to initiate M-Pesa payment",
