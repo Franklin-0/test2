@@ -1,6 +1,5 @@
 // --- Module Imports ---
 const express = require('express');
-const mysql = require('mysql2/promise'); 
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const bcrypt = require('bcrypt');
@@ -9,9 +8,10 @@ const nodemailer = require('nodemailer');
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const session = require('express-session');
+const MySQLStore = require('express-mysql-session')(session);
 const axios = require('axios'); // For making HTTP requests to Safaricom API
 
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+require('dotenv').config({ path: require('path').resolve(__dirname, '..', '.env') });
 
 // --- Express App Initialization ---
 const app = express();
@@ -36,14 +36,20 @@ app.use(cors({
 
 app.use(bodyParser.json()); // Middleware to parse incoming request bodies in JSON format
 
+// --- Database Connection ---
+const db = require('./db');
+
 // --- Session Setup ---
 // In production, ensure you're running behind a proxy (like Nginx) that handles HTTPS.
 // 'trust proxy' allows Express to trust the X-Forwarded-Proto header.
 if (isProduction) {
   app.set('trust proxy', 1); // trust first proxy
 }
+
+const sessionStore = new MySQLStore({}, db);
+
 app.use(session({
-  secret: process.env.SESSION_SECRET,
+  secret: process.env.SESSION_SECRET || 'a_very_long_and_super_random_secret_string_!@#$_for_security',
   resave: false,
   saveUninitialized: false, // More secure default, saves session only when modified
   cookie: { 
@@ -52,22 +58,12 @@ app.use(session({
     sameSite: isProduction ? 'none' : 'lax', // 'none' for cross-domain requests in prod, 'lax' for dev
     maxAge: 24 * 60 * 60 * 1000 // e.g., 24 hours
   }
+  store: sessionStore,
 }));
 
 // --- Passport Setup ---
 app.use(passport.initialize());
 app.use(passport.session());
-// --- Database Connection Pool ---
-const db = mysql.createPool({ 
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_DATABASE,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
-});
-
 
 // --- Passport Google Strategy ---
 // This configures how Passport authenticates users with their Google accounts.
@@ -980,13 +976,4 @@ app.post('/api/mpesa-callback', (req, res) => {
 
 
 // --- Server Startup ---
-// First, test the database connection. If successful, start the Express server.
-db.getConnection()
-  .then(connection => {
-    console.log('Connected to MySQL');
-    connection.release();
-    app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-  }).catch(err => {
-    console.error('Failed to connect to database.', err);
-    process.exit(1);
-  });
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
