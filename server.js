@@ -10,6 +10,7 @@ const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const session = require('express-session');
 const MySQLStore = require('express-mysql-session')(session);
 const axios = require('axios'); // For making HTTP requests to Safaricom API
+const mpesaRoutes = require('./routes/mpesa'); // Import the M-Pesa router
 
 require('dotenv').config({ path: require('path').resolve(__dirname, '..', '.env') });
 
@@ -843,6 +844,9 @@ function normalizePhone(phone) {
 
   return /^2547\d{8}$/.test(msisdn) ? msisdn : null;
 }
+
+// --- Use M-Pesa Routes ---
+app.use('/api', mpesaRoutes);
 
 // --- M-Pesa API Routes ---
 
