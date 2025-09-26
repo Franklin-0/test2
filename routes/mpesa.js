@@ -81,7 +81,7 @@ router.post("/stk-push", async (req, res) => {
     // --- 2. Server-side amount calculation ---
     let subtotal = 0;
     for (const item of cart) {
-      const [[product]] = await db.query('SELECT price FROM products WHERE id = ?', [item.productId]);
+      const [[product]] = await db.query('SELECT price FROM product WHERE id = ?', [item.productId]);
       if (!product) {
         return res.status(400).json({ error: `Product with ID ${item.productId} not found.` });
       }
