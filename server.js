@@ -15,7 +15,7 @@ require('dotenv').config({ path: require('path').resolve(__dirname, '..', '.env'
 
 // --- Express App Initialization ---
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 // --- Environment Setup ---
 const isProduction = process.env.NODE_ENV === 'production';
