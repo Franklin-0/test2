@@ -25,15 +25,15 @@ const GOOGLE_CALLBACK_URL = isProduction ? process.env.GOOGLE_CALLBACK_URL_PROD 
 // --- Middleware Setup ---
 // CORS (Cross-Origin Resource Sharing) configuration
 const allowedOrigins = [
-  'https://testfront2.onrender.com', // Your production frontend
-  'http://localhost:5500',           // Common local development server port
-  'http://127.0.0.1:5500',           // Another common local dev address
-  'https://testfront2-onrender-com.onrender.com' // Add the alternative Render domain
-];
+  process.env.FRONTEND_URL_PROD,
+  process.env.FRONTEND_URL_DEV,
+  process.env.FRONTEND_URL_DEV2,
+  'https://testfront2.onrender.com' // Hardcoded as a fallback
+].filter(Boolean); // Filter out any undefined values
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
+    // Allow requests with no origin (like mobile apps or curl requests) or from whitelisted origins
     if (!origin || allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
@@ -42,8 +42,6 @@ const corsOptions = {
   },
   credentials: true // This is important for sessions/cookies
 };
-
-app.use(cors(corsOptions));
 
 app.use(bodyParser.json()); // Middleware to parse incoming request bodies in JSON format
 
