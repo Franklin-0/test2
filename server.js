@@ -52,6 +52,7 @@ app.use(cors({
 
 
 
+
 // --- Security Middleware ---
 // Sets various HTTP headers for security.
 // We must configure the cross-origin policy to allow our frontend to fetch resources.
