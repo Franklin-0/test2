@@ -259,7 +259,7 @@ router.post("/stk-callback", safaricomIpCheck, async (req, res) => {
 
     // 5. If the order was placed by a logged-in user, clear their cart
     if (order.user_id) {
-      await connection.query('DELETE FROM carts WHERE user_id = ?', [order.user_id]);
+      await connection.query('DELETE FROM cart_items WHERE user_id = ?', [order.user_id]);
       logger.info(`🛒 Cart cleared for user ${order.user_id}.`, { userId: order.user_id, orderId: order.id });
     }
 
