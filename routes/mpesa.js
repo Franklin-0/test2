@@ -95,10 +95,18 @@ router.post("/stk-push", async (req, res) => {
     // --- End of server-side amount calculation ---
 
     const token = await getToken();
-    const timestamp = getTimestamp();
     const shortcode = process.env.MPESA_SHORTCODE;
     const passkey = process.env.MPESA_PASSKEY;
     const callbackURL = process.env.MPESA_CALLBACK_URL;
+
+    // --- 3. Environment Variable Validation ---
+    if (!shortcode || !passkey || !callbackURL) {
+      logger.error('❌ M-Pesa environment variables are missing. Check MPESA_SHORTCODE, MPESA_PASSKEY, MPESA_CALLBACK_URL.');
+      // Do not expose internal configuration details to the client.
+      return res.status(500).json({ error: 'Payment gateway is not configured correctly.' });
+    }
+
+    const timestamp = getTimestamp();
 
     // Generate password = base64(shortcode + passkey + timestamp)
     const password = Buffer.from(shortcode + passkey + timestamp).toString("base64");

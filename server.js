@@ -46,8 +46,8 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.use(express.json());
-
 app.use("/api", mpesaRoutes);
+
 app.use(bodyParser.json()); // Middleware to parse incoming request bodies in JSON format
 
 // --- Database Connection ---
@@ -846,9 +846,6 @@ function normalizePhone(phone) {
 
   return /^2547\d{8}$/.test(msisdn) ? msisdn : null;
 }
-
-// --- Use M-Pesa Routes ---
-app.use('/api', mpesaRoutes);
 
 // --- Server Startup ---
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
