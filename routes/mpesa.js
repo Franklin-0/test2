@@ -61,7 +61,7 @@ router.use((req, res, next) => {
   next();
 });
 
-// 2️⃣ STK Push endpoint
+// 2️⃣ STK Push endpoint (now at /api/mpesa/stk-push)
 router.post("/stk-push", async (req, res) => {
   try {
     const { phone, cart, shippingDetails } = req.body;
@@ -190,7 +190,7 @@ const safaricomIpCheck = (req, res, next) => {
   next();
 };
 
-// 3️⃣ Callback route → Safaricom sends payment result here
+// 3️⃣ Callback route → Safaricom sends payment result here (now at /api/mpesa/stk-callback)
 router.post("/stk-callback", safaricomIpCheck, async (req, res) => {
   logger.info("📩 M-Pesa Callback Received", { body: req.body });
   

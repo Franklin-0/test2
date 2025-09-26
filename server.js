@@ -46,8 +46,6 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.use(express.json());
-app.use("/api", mpesaRoutes);
-
 app.use(bodyParser.json()); // Middleware to parse incoming request bodies in JSON format
 
 // --- Database Connection ---
@@ -655,6 +653,9 @@ app.post('/api/cart/merge', async (req, res) => {
   }
 });
 
+// --- M-Pesa Routes ---
+// Mount the M-Pesa router under its own specific path for clarity and isolation.
+app.use('/api/mpesa', mpesaRoutes);
 
 // --- Favourites API Routes ---
 
@@ -848,4 +849,4 @@ function normalizePhone(phone) {
 }
 
 // --- Server Startup ---
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
