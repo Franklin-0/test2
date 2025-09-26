@@ -45,7 +45,7 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-
+app.use("/api", mpesaRoutes);
 app.use(bodyParser.json()); // Middleware to parse incoming request bodies in JSON format
 
 // --- Database Connection ---
