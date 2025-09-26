@@ -25,25 +25,11 @@ const GOOGLE_CALLBACK_URL = isProduction ? process.env.GOOGLE_CALLBACK_URL_PROD 
 // --- Middleware Setup ---
 // CORS (Cross-Origin Resource Sharing) middleware to allow requests from the frontend
 
-const allowedOrigins = [
-  "http://localhost:5502",
-  "https://testfront2.onrender.com"
-];
-
 app.use(cors({
-    origin: function (origin, callback) {
-        // Allow requests with no origin (like mobile apps, Postman, or server-to-server requests)
-        if (!origin) return callback(null, true);
-        // If the origin is in our whitelist, allow it.
-        if (allowedOrigins.indexOf(origin) !== -1) {
-            return callback(null, true);
-        }
-        // Otherwise, block the request.
-        return callback(new Error('The CORS policy for this site does not allow access from the specified Origin.'), false);
-    },
-    credentials: true // This is crucial for allowing cookies/sessions to be sent from the frontend.
+  origin: "https://testfront2.onrender.com", // only this frontend allowed
+  methods: ["GET", "POST", "PUT", "DELETE"], // allowed HTTP methods
+  credentials: true   // if using cookies or sessions
 }));
-
 
 
 
