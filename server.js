@@ -1,4 +1,5 @@
 // --- Module Imports ---
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -12,11 +13,6 @@ const MySQLStore = require('express-mysql-session')(session);
 const axios = require('axios'); // For making HTTP requests to Safaricom API
 const mpesaRoutes = require('./routes/mpesa'); // Import the M-Pesa router
 
-// Load environment variables from a .env file in the same directory.
-// This is the standard setup. In production (like on Railway),
-// the platform's environment variables will be used automatically
-// and will take precedence if a .env file is not found.
-require('dotenv').config();
 
 // --- Express App Initialization ---
 const app = express();
@@ -33,22 +29,27 @@ const allowedOrigins = [
   process.env.FRONTEND_URL_PROD,
   process.env.FRONTEND_URL_DEV,
   process.env.FRONTEND_URL_DEV2,
-  'https://testfront2.onrender.com' // Hardcoded as a fallback
-].filter(Boolean); // Filter out any undefined values
+  'https://testfront2.onrender.com',
+  'http://localhost:3000',
+  'http://localhost:5501' // added explicitly for dev
+].filter(Boolean); // Remove undefined values
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests) or from whitelisted origins
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+    console.log("🌍 Incoming request origin:", origin);
+
+    if (!origin || allowedOrigins.some(o => origin.startsWith(o))) {
       callback(null, true);
     } else {
+      console.error("❌ Blocked by CORS:", origin);
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true // This is important for sessions/cookies
+  credentials: true
 };
 
 app.use(cors(corsOptions));
+
 app.use(express.json());
 app.use(bodyParser.json()); // Middleware to parse incoming request bodies in JSON format
 
