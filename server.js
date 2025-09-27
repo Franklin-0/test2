@@ -779,12 +779,12 @@ async function mergeCartsOnLogin(session, userId) {
 
 // GET /auth/google - The route the user visits to start the Google login process.
 // Passport redirects them to Google's authentication screen.
-app.get('/api/auth/google',
+app.get('/auth/google',
   passport.authenticate('google', { scope: ['profile', 'email'] })
 );
 
 // GET /auth/google/callback - The route Google redirects to after the user authenticates.
-app.get('/api/auth/google/callback', 
+app.get('/auth/google/callback', 
   passport.authenticate('google', { failureRedirect: `${FRONTEND_URL}/login.html` }), // If Google auth fails, redirect to login page.
   (req, res) => {
     // Successful authentication. The user is now logged in (req.user exists).
