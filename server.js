@@ -793,9 +793,12 @@ app.get('/api/auth/google/callback',
       .then(() => console.log(`Cart merged for Google user ${req.user.id}`))
       .catch(err => console.error("Google login cart merge failed:", err));
 
-    const { name, isNewUser } = req.user;
-    res.redirect(`${FRONTEND_URL}/Frontend-babyshoe/auth-callback.html?name=${encodeURIComponent(name)}&isNewUser=${isNewUser}`);
-
+    // The user object from Passport contains the necessary details.
+    const user = req.user;
+    const name = user.name || 'User';
+    const isNewUser = user.isNewUser || false;
+    // Redirect to a simple, clean path on the frontend.
+    res.redirect(`${FRONTEND_URL}/auth-callback.html?name=${encodeURIComponent(name)}&isNewUser=${isNewUser}`);
   }
 );
 
