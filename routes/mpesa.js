@@ -99,6 +99,10 @@ router.post("/stk-push", async (req, res) => {
     const passkey = process.env.MPESA_PASSKEY;
     const callbackURL = process.env.MPESA_CALLBACK_URL;
 
+    console.log("✅ Shortcode being used:", shortcode);
+    console.log("✅ Environment:", process.env.MPESA_ENV);
+    console.log("✅ Callback URL:", callbackURL);
+
     // --- 3. Environment Variable Validation ---
     if (!shortcode || !passkey || !callbackURL) {
       logger.error('❌ M-Pesa environment variables are missing. Check MPESA_SHORTCODE, MPESA_PASSKEY, MPESA_CALLBACK_URL.');
