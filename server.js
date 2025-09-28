@@ -688,35 +688,27 @@ app.put('/api/cart', async (req, res) => {
  * DELETE /api/cart - Removes an item from the cart or clears the whole cart.
  */
 app.delete('/api/cart', async (req, res) => {
-  try {
-    const cartItemId = req.body ? req.body.cartItemId : null;
-    const userId = req.isAuthenticated() ? req.user.id : null;
+  // Safely check for cartItemId, even if req.body is undefined.
+  const cartItemId = req.body ? req.body.cartItemId : null;
 
-    if (cartItemId) {
-      // --- Logic to remove a single item ---
-      if (userId) {
-        const [productId, size] = cartItemId.split('-');
-        await db.query('DELETE FROM cart_items WHERE user_id = ? AND product_id = ? AND size = ?', [userId, productId, size]);
-      }
-      req.session.cart = (req.session.cart || []).filter(item => item.id !== cartItemId);
-    } else {
-      // --- Logic to clear the entire cart ---
-      if (userId) {
-        await db.query('DELETE FROM cart_items WHERE user_id = ?', [userId]);
-      }
-      req.session.cart = [];
+  if (cartItemId) {
+    // If logged in, delete the specific item from the database
+    if (req.isAuthenticated()) {
+      const [productId, size] = cartItemId.split('-');
+      await db.query('DELETE FROM cart_items WHERE user_id = ? AND product_id = ? AND size = ?', [req.user.id, productId, size]);
     }
-
-    // After modification, fetch the definitive state of the cart to return.
-    // For guests, this will be the empty session cart.
-    // For logged-in users, this confirms the DB is empty.
-    const [updatedCart] = userId ? await db.query('SELECT ci.product_id AS productId, ci.size, ci.quantity, p.name, p.price, p.image_url AS image, CONCAT(ci.product_id, "-", ci.size) AS id FROM cart_items ci JOIN product p ON ci.product_id = p.id WHERE ci.user_id = ?', [userId]) : [[]];
-    
-    res.status(200).json(updatedCart);
-  } catch (error) {
-    logger.error('❌ Error processing DELETE /api/cart', { error: error.message });
-    res.status(500).json({ error: 'Failed to update cart on the server.' });
+    // Also remove from session (for guests or to keep sync)
+    req.session.cart = req.session.cart.filter(item => item.id !== cartItemId);
+  } else {
+    // If no cartItemId, clear the entire cart.
+    // If logged in, clear their entire cart from the database
+    if (req.isAuthenticated()) {
+      await db.query('DELETE FROM cart_items WHERE user_id = ?', [req.user.id]);
+    }
+    // Also clear session cart
+    req.session.cart = [];
   }
+  res.status(200).json(req.session.cart);
 });
 
 /**
