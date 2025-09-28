@@ -12,6 +12,7 @@ const session = require('express-session');
 const MySQLStore = require('express-mysql-session')(session);
 const axios = require('axios'); // For making HTTP requests to Safaricom API
 const mpesaRoutes = require('./routes/mpesa'); // Import the M-Pesa router
+const logger = require('./logger');
 
 
 // --- Express App Initialization ---
@@ -50,6 +51,116 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
+// --- M-Pesa Callback Route ---
+// This route must be placed *before* other middleware like session handlers or broad CORS rules.
+// Safaricom's servers need a clean, public endpoint to post the payment result.
+// We include `express.json()` here specifically because this route is defined before the global body-parser.
+
+/**
+ * Middleware to secure the callback endpoint by checking the source IP.
+ */
+const safaricomIpCheck = (req, res, next) => {
+  const allowedIps = [
+    '196.201.214.200', '196.201.214.206', '196.201.213.114', '196.201.212.127',
+    '196.201.212.138', '196.201.212.129', '196.201.212.136', '196.201.213.44',
+    '196.201.213.50', '196.201.214.208'
+  ];
+  let requestIp = req.ip || req.connection.remoteAddress;
+
+  if (requestIp && requestIp.startsWith('::ffff:')) {
+    requestIp = requestIp.substring(7);
+  }
+
+  if (process.env.NODE_ENV === 'production' && !allowedIps.includes(requestIp)) {
+    logger.warn(`🚫 Denied callback request from untrusted IP: ${requestIp}`);
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  next();
+};
+
+app.post("/api/mpesa/stk-callback", express.json(), safaricomIpCheck, async (req, res) => {
+  logger.info("📩 M-Pesa Callback Received in server.js", { body: req.body });
+
+  const callbackData = req.body?.Body?.stkCallback;
+
+  if (!callbackData) {
+    logger.error('Invalid M-Pesa callback format received.', { body: req.body });
+    return res.status(200).json({ ResultCode: 1, ResultDesc: 'Failed' });
+  }
+
+  const checkoutRequestID = callbackData.CheckoutRequestID;
+  const resultCode = callbackData.ResultCode;
+
+  if (resultCode !== 0) {
+    logger.error(`❌ Payment failed for ${checkoutRequestID}.`, { checkoutRequestID, resultCode, reason: callbackData.ResultDesc });
+    const failureReason = callbackData.ResultDesc || 'Payment failed or was cancelled by user.';
+    await db.query(
+      'UPDATE orders SET status = ?, failure_reason = ? WHERE mpesa_checkout_id = ?',
+      ['failed', failureReason, checkoutRequestID]
+    );
+    return res.status(200).json({ ResultCode: 0, ResultDesc: 'Accepted' });
+  }
+
+  logger.info(`🎉 Payment successful for ${checkoutRequestID}`, { checkoutRequestID });
+  const metadata = callbackData.CallbackMetadata.Item;
+  const parsedMeta = {};
+  metadata.forEach(item => {
+    parsedMeta[item.Name] = item.Value;
+  });
+
+  const mpesaReceipt = parsedMeta.MpesaReceiptNumber;
+  const amountPaid = parsedMeta.Amount;
+
+  let connection;
+  try {
+    connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    const [[order]] = await connection.query(
+      'SELECT * FROM orders WHERE mpesa_checkout_id = ? AND status = ?',
+      [checkoutRequestID, 'pending']
+    );
+
+    if (!order) {
+      logger.warn(`⚠️ Order with CheckoutID ${checkoutRequestID} not found or not pending. No action taken.`, { checkoutRequestID });
+      await connection.commit();
+      return res.status(200).json({ ResultCode: 0, ResultDesc: "Accepted" });
+    }
+
+    if (parseInt(amountPaid, 10) < order.amount) {
+      logger.error(`❌ Payment amount mismatch for order ${order.id}.`, { orderId: order.id, expected: order.amount, paid: amountPaid });
+      await connection.query('UPDATE orders SET status = ? WHERE id = ?', ['payment_mismatch', order.id]);
+      await connection.commit();
+      return res.status(200).json({ ResultCode: 0, ResultDesc: "Accepted" });
+    }
+
+    await connection.query(
+      'UPDATE orders SET status = ?, mpesa_receipt = ?, amount_paid = ? WHERE mpesa_checkout_id = ? AND status = ?',
+      ['paid', mpesaReceipt, amountPaid, checkoutRequestID, 'pending']
+    );
+    logger.info(`✅ Order ${order.id} updated to 'paid'.`, { orderId: order.id, receipt: mpesaReceipt });
+
+    if (order.user_id) {
+      await connection.query('DELETE FROM cart_items WHERE user_id = ?', [order.user_id]);
+      logger.info(`🛒 Cart cleared for user ${order.user_id}.`, { userId: order.user_id });
+    }
+
+    await connection.commit();
+    // TODO: Send a confirmation email here.
+
+  } catch (dbError) {
+    logger.error('DATABASE TRANSACTION ERROR during M-Pesa callback processing:', { checkoutRequestID, error: dbError.message });
+    if (connection) await connection.rollback();
+  } finally {
+    if (connection) connection.release();
+  }
+
+  res.status(200).json({ ResultCode: 0, ResultDesc: "Accepted" });
+});
+
+
+// --- General Middleware ---
 app.use(express.json());
 app.use(bodyParser.json()); // Middleware to parse incoming request bodies in JSON format
 
