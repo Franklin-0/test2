@@ -102,7 +102,7 @@ router.post("/stk-push", async (req, res) => {
     const token = await getToken();
     const shortcode = process.env.MPESA_SHORTCODE;
     const passkey = process.env.MPESA_PASSKEY;
-    const callbackURL = process.env.MPESA_CALLBACK_URL;
+    const callbackURL = process.env.MPESA_CALLBACK_URL ? process.env.MPESA_CALLBACK_URL.trim() : null;
 
     console.log("✅ Shortcode being used:", shortcode);
     console.log("✅ Environment:", process.env.MPESA_ENV);
@@ -160,7 +160,7 @@ router.post("/stk-push", async (req, res) => {
         PartyA: msisdn,      
         PartyB: shortcode,    // paybill
         PhoneNumber: msisdn,   
-        CallBackURL: callbackURL,
+        CallBackURL: callbackURL, // Use the trimmed URL
         AccountReference: process.env.MPESA_ACCOUNT_NUMBER || 'FashionableBabyShoes',
         TransactionDesc: `Order payment by ${shippingDetails?.name || "Customer"}`
       },
