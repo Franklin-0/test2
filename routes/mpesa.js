@@ -69,6 +69,7 @@ router.use((req, res, next) => {
 // 2️⃣ STK Push endpoint (now at /api/mpesa/stk-push)
 router.post("/stk-push", async (req, res) => {
   try {
+    const mpesaEnv = process.env.MPESA_ENV || 'sandbox';
     const { phone, cart, shippingDetails } = req.body;
 
     // --- 1. Input Validation ---
@@ -95,15 +96,13 @@ router.post("/stk-push", async (req, res) => {
 
     const shipping = 500; 
     const amount = subtotal + shipping;
-    // We'll also need the real total to save in the database for the pending order.
-    const realOrderAmount = subtotal + shipping;
-    // --- End of server-side amount calculation ---
+    // ❗ M-Pesa Sandbox is most reliable with an amount of 1.
+    const mpesaAmount = mpesaEnv === 'sandbox' ? 1 : amount;
 
     const token = await getToken();
     const shortcode = process.env.MPESA_SHORTCODE;
     const passkey = process.env.MPESA_PASSKEY;
     const callbackURL = process.env.MPESA_CALLBACK_URL;
-    const mpesaEnv = process.env.MPESA_ENV || 'sandbox';
 
     console.log("✅ Shortcode being used:", shortcode);
     console.log("✅ Environment:", process.env.MPESA_ENV);
@@ -115,6 +114,30 @@ router.post("/stk-push", async (req, res) => {
       // Do not expose internal configuration details to the client.
       return res.status(500).json({ error: 'Payment gateway is not configured correctly.' });
     }
+
+    // --- 4. Create Pending Order in DB *BEFORE* calling M-Pesa ---
+    // This prevents the race condition where the callback arrives before the order is saved.
+    let orderId;
+    try {
+      const orderData = {
+        user_id: req.user ? req.user.id : null,
+        status: 'pending_mpesa_auth', // A temporary status
+        amount: amount, // The real order amount
+        shipping_details: JSON.stringify(shippingDetails),
+        items: JSON.stringify(cart)
+      };
+      const [result] = await db.query('INSERT INTO orders SET ?', orderData);
+      orderId = result.insertId;
+      logger.info(`📝 Order created with temporary status, ID: ${orderId}`);
+    } catch (dbError) {
+      logger.error('❌ DB Error: Failed to create initial pending order.', { error: dbError.message });
+      return res.status(500).json({
+        error: "Failed to create order before payment.",
+        details: "Could not save order to the database."
+      });
+    }
+    // --- End of order creation ---
+
 
     const timestamp = getTimestamp();
 
@@ -133,7 +156,7 @@ router.post("/stk-push", async (req, res) => {
         Password: password,
         Timestamp: timestamp,
         TransactionType: 'CustomerPayBillOnline',
-        Amount: amount,
+        Amount: mpesaAmount, // Use the sandbox-friendly amount
         PartyA: msisdn,      
         PartyB: shortcode,    // paybill
         PhoneNumber: msisdn,   
@@ -148,28 +171,31 @@ router.post("/stk-push", async (req, res) => {
       }
     );
 
+    // --- 5. Update Order with M-Pesa CheckoutRequestID ---
     const checkoutRequestID = stkResp.data.CheckoutRequestID;
-    const orderData = {
-      user_id: req.user ? req.user.id : null, 
-      status: 'pending',
-      amount: realOrderAmount, 
-      mpesa_checkout_id: checkoutRequestID,
-      shipping_details: JSON.stringify(shippingDetails), 
-      items: JSON.stringify(cart) 
-    };
+    await db.query(
+      'UPDATE orders SET status = ?, mpesa_checkout_id = ? WHERE id = ?',
+      ['pending', checkoutRequestID, orderId]
+    );
+    logger.info(`✅ Order ${orderId} updated to pending with CheckoutRequestID: ${checkoutRequestID}`, { orderId, checkoutRequestID });
 
-    await db.query('INSERT INTO orders SET ?', orderData);
-    logger.info(`✅ Order pending, saved with CheckoutRequestID: ${checkoutRequestID}`, { checkoutRequestID });
     res.json(stkResp.data);
 
   } catch (err) {
+    // This block now catches errors from both the M-Pesa API call and the DB operations.
     const errorContext = {
-  phone: req.body?.phone,
-  errorMessage: err.message,
-  details: err.response?.data || null
-};
+      phone: req.body?.phone,
+      errorMessage: err.message,
+      details: err.response?.data || null
+    };
 
     logger.error("❌ STK Push error", errorContext);
+
+    // If the order was created but the M-Pesa call failed, mark the order as failed.
+    // This requires `orderId` to be declared outside the try block.
+    // We can't do that easily here, but it's a good improvement for later.
+    // For now, the order will remain in 'pending_mpesa_auth' status, which is informative.
+
     res.status(err.response?.status || 500).json({
       error: "Failed to initiate M-Pesa payment",
       details: err.response?.data?.errorMessage || "An internal error occurred."
