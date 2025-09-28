@@ -61,17 +61,19 @@ app.use(cors(corsOptions));
  */
 const safaricomIpCheck = (req, res, next) => {
   const allowedIps = [
-    '196.201.214.200', '196.201.214.206', '196.201.213.114', '196.201.212.127',
-    '196.201.212.138', '196.201.212.129', '196.201.212.136', '196.201.213.44',
-    '196.201.213.50', '196.201.214.208'
+    '196.201.214.200', '196.201.214.206', '196.201.213.114',
+    '196.201.212.127', '196.201.212.138', '196.201.212.129',
+    '196.201.212.136', '196.201.213.44', '196.201.213.50',
+    '196.201.214.208'
   ];
-  let requestIp = req.ip || req.connection.remoteAddress;
 
+  let requestIp = req.ip || req.connection.remoteAddress;
   if (requestIp && requestIp.startsWith('::ffff:')) {
     requestIp = requestIp.substring(7);
   }
 
-  if (process.env.NODE_ENV === 'production' && !allowedIps.includes(requestIp)) {
+  // ✅ Only enforce IP check if M-Pesa ENV = production
+  if (process.env.MPESA_ENV === 'production' && !allowedIps.includes(requestIp)) {
     logger.warn(`🚫 Denied callback request from untrusted IP: ${requestIp}`);
     return res.status(403).json({ error: 'Forbidden' });
   }

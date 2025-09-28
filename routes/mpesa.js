@@ -103,6 +103,7 @@ router.post("/stk-push", async (req, res) => {
     const shortcode = process.env.MPESA_SHORTCODE;
     const passkey = process.env.MPESA_PASSKEY;
     const callbackURL = process.env.MPESA_CALLBACK_URL;
+    const mpesaEnv = process.env.MPESA_ENV || 'sandbox';
 
     console.log("✅ Shortcode being used:", shortcode);
     console.log("✅ Environment:", process.env.MPESA_ENV);
@@ -120,7 +121,7 @@ router.post("/stk-push", async (req, res) => {
     // Generate password = base64(shortcode + passkey + timestamp)
     const password = Buffer.from(shortcode + passkey + timestamp).toString("base64");
 
-    const stkPushUrl = process.env.MPESA_ENV === "production"
+    const stkPushUrl = mpesaEnv === "production"
       ? "https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
       : "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest";
 
