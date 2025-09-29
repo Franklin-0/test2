@@ -356,43 +356,67 @@ app.get('/api/products/:id', async (req, res) => {
   }
 });
 
-
 // POST /api/register - Handles new user registration.
 app.post('/api/register', async (req, res) => {
   const { name, email, password } = req.body;
 
+  console.log("📩 Incoming /api/register request body:", req.body);
+
   // --- Backend Validation ---
   if (!email || !password || !name) {
+    console.warn("⚠️ Validation failed: Missing fields");
     return res.status(400).json({ error: 'Name, email, and password are required' });
   }
+
   // Validate email format
   if (!/^\S+@\S+\.\S+$/.test(email)) {
+    console.warn("⚠️ Validation failed: Invalid email format", email);
     return res.status(400).json({ error: 'Please enter a valid email address.' });
   }
+
   // Validate password length
-  if (password.length < 6) {
-    return res.status(400).json({ error: 'Email and password are required' });
+  if (password.length < 8) {
+    console.warn("⚠️ Validation failed: Password too short");
+    return res.status(400).json({ error: 'Password must be at least 8 characters long.' });
+  }
+
+  // Validate password complexity (matching frontend)
+  if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+    console.warn("⚠️ Validation failed: Password missing complexity");
+    return res.status(400).json({ error: 'Password must contain an uppercase letter, a lowercase letter, and a number.' });
   }
 
   try {
     // Hash the password before storing it for security. 10 is the salt round count.
     const hashedPassword = await bcrypt.hash(password, 10);
+
     // Insert the new user into the database.
-    const [result] = await db.query('INSERT INTO users (name, email, password) VALUES (?, ?, ?)', [name, email, hashedPassword]);
-    
-    // Send a welcome email to the new user
+    const [result] = await db.query(
+      'INSERT INTO users (name, email, password) VALUES (?, ?, ?)',
+      [name, email, hashedPassword]
+    );
+
+    console.log("✅ User registered successfully:", { userId: result.insertId, email });
+
+    // Send a welcome email (async, don’t block response)
     const subject = 'Welcome to Fashionable Baby Shoes!';
     const html = `<h1>Welcome, ${name || 'friend'}!</h1><p>Thank you for signing up. We're excited to have you with us. Happy shopping!</p>`;
-    sendEmail(email, subject, html).catch(console.error); // Send email but don't wait for it to complete
+    sendEmail(email, subject, html).catch(err => {
+      console.error("📧 Failed to send welcome email:", err);
+    });
 
     res.status(201).json({ success: true, userId: result.insertId });
   } catch (err) {
+    console.error("❌ Registration failed:", err);
+
     if (err.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ error: 'Email already exists' });
     }
-    res.status(500).json({ error: 'Server error during registration' });
+
+    res.status(500).json({ error: 'Server error during registration', details: err.message });
   }
 });
+
 
 // POST /api/login - Handles user login with email and password.
 app.post('/api/login', async (req, res) => {
