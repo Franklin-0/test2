@@ -5,7 +5,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const session = require('express-session');
@@ -23,6 +23,9 @@ const PORT = process.env.PORT || 3000;
 const isProduction = process.env.NODE_ENV === 'production';
 const FRONTEND_URL = isProduction ? process.env.FRONTEND_URL_PROD : process.env.FRONTEND_URL_DEV;
 const GOOGLE_CALLBACK_URL = isProduction ? process.env.GOOGLE_CALLBACK_URL_PROD : process.env.GOOGLE_CALLBACK_URL_DEV;
+
+// --- Resend Initialization ---
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // --- Middleware Setup ---
 // CORS (Cross-Origin Resource Sharing) configuration
@@ -270,43 +273,29 @@ passport.deserializeUser(async (id, done) => {
  * @param {string} html - The HTML body of the email.
  */
 async function sendEmail(to, subject, html) {
-  // This function encapsulates the logic for sending an email using Nodemailer.
+  // This function encapsulates the logic for sending an email using Resend.
   try {
-    let transporter = nodemailer.createTransport({
-      host: process.env.MAIL_HOST,
-      port: parseInt(process.env.MAIL_PORT, 10),
-      secure: process.env.MAIL_SECURE === 'true',
-      auth: {
-        user: process.env.MAIL_USER,
-        pass: process.env.MAIL_PASS,
-      },
-      tls: {
-        // Do not fail on invalid certs
-        rejectUnauthorized: false
-      },
+    const { data, error } = await resend.emails.send({
+      // IMPORTANT: You must use a verified domain with Resend.
+      // The 'onboarding@resend.dev' is for testing only.
+      // Replace with your own, e.g., 'noreply@yourdomain.com'
+      from: 'Fashionable Baby Shoes <onboarding@resend.dev>',
+      to: [to], // Resend expects an array of recipients
+      subject: subject,
+      html: html,
     });
 
-    // --- Debugging Step: Verify transporter configuration ---
-    // This will check if the host, port, and auth credentials are correct.
-    // If it fails, it will throw an error immediately.
-    try {
-      await transporter.verify();
-    } catch (verifyErr) {
-      console.error('Mailer configuration error:', verifyErr);
-      throw verifyErr; // Stop the process if mailer config is bad
+    if (error) {
+      // If Resend returns an error, log it and re-throw it.
+      logger.error(`Failed to send email to ${to}. Subject: "${subject}".`, { error });
+      throw error;
     }
 
-    await transporter.sendMail({
-      from: '"Fashionable Baby Shoes" <noreply@fashionablebabyshoes.com>',
-      to,
-      subject,
-      html,
-    });
-    console.log(`Email sent successfully to ${to}`);
-  } catch (err) {
-    // Re-throw the error so the calling function knows something went wrong.
-    console.error(`Failed to send email to ${to}. Subject: "${subject}". Error:`, err);
-    throw err;
+    logger.info(`Email sent successfully to ${to}`, { emailId: data.id });
+    return data;
+  } catch (e) {
+    logger.error(`Exception caught while sending email to ${to}.`, { error: e.message });
+    throw e; // Re-throw to let the caller handle it.
   }
 }
 
