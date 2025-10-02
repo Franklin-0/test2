@@ -151,7 +151,22 @@ app.post("/api/mpesa/stk-callback", express.json(), safaricomIpCheck, async (req
     }
 
     await connection.commit();
-    // TODO: Send a confirmation email here.
+    // --- Send Order Confirmation Email ---
+    // This is done after the transaction is committed to ensure the order is saved first.
+    try {
+      const shippingInfo = JSON.parse(order.shipping_details);
+      const userEmail = shippingInfo.email;
+      const userName = shippingInfo.name || 'Customer';
+
+      if (userEmail) {
+        const subject = `Your Order Confirmation (ID: ${order.id})`;
+        const html = `<h1>Thank you for your order, ${userName}!</h1><p>We've received your payment of KES ${amountPaid} for order #${order.id}.</p><p>We'll notify you once it has been shipped. You can view your order details in your account.</p><p>Thanks for shopping with Fashionable Baby Shoes!</p>`;
+        // Send email without blocking the response to M-Pesa.
+        sendEmail(userEmail, subject, html);
+      }
+    } catch (emailError) {
+      logger.error('Error preparing or sending order confirmation email:', { orderId: order.id, error: emailError.message });
+    }
 
   } catch (dbError) {
     logger.error('DATABASE TRANSACTION ERROR during M-Pesa callback processing:', { checkoutRequestID, error: dbError.message });
@@ -392,9 +407,7 @@ app.post('/api/register', async (req, res) => {
     // Send a welcome email (async, don’t block response)
     const subject = 'Welcome to Fashionable Baby Shoes!';
     const html = `<h1>Welcome, ${name || 'friend'}!</h1><p>Thank you for signing up. We're excited to have you with us. Happy shopping!</p>`;
-    sendEmail(email, subject, html).catch(err => {
-      console.error("📧 Failed to send welcome email:", err);
-    });
+    sendEmail(email, subject, html); // The function already handles its own errors and logging.
 
     res.status(201).json({ success: true, userId: result.insertId });
   } catch (err) {
@@ -440,7 +453,7 @@ app.post('/api/login', async (req, res) => {
           // Send a "welcome back" email
           const subject = 'Welcome Back!';
           const html = `<h1>Welcome back, ${user.name || 'friend'}!</h1><p>We're glad to see you again. Check out our latest arrivals!</p>`;
-          sendEmail(user.email, subject, html).catch(console.error);
+          sendEmail(user.email, subject, html); // The function already handles its own errors and logging.
 
           res.json({ success: true, message: 'Login successful', user: { name: user.name } });
         })
