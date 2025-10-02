@@ -5,6 +5,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
+const nodemailer = require('nodemailer');
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const session = require('express-session');
@@ -12,14 +13,11 @@ const MySQLStore = require('express-mysql-session')(session);
 const axios = require('axios'); // For making HTTP requests to Safaricom API
 const mpesaRoutes = require('./routes/mpesa'); // Import the M-Pesa router
 const logger = require('./logger');
-const { Resend } = require("resend");
 
 
 // --- Express App Initialization ---
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 // --- Environment Setup ---
 const isProduction = process.env.NODE_ENV === 'production';
@@ -151,22 +149,7 @@ app.post("/api/mpesa/stk-callback", express.json(), safaricomIpCheck, async (req
     }
 
     await connection.commit();
-    // --- Send Order Confirmation Email ---
-    // This is done after the transaction is committed to ensure the order is saved first.
-    try {
-      const shippingInfo = JSON.parse(order.shipping_details);
-      const userEmail = shippingInfo.email;
-      const userName = shippingInfo.name || 'Customer';
-
-      if (userEmail) {
-        const subject = `Your Order Confirmation (ID: ${order.id})`;
-        const html = `<h1>Thank you for your order, ${userName}!</h1><p>We've received your payment of KES ${amountPaid} for order #${order.id}.</p><p>We'll notify you once it has been shipped. You can view your order details in your account.</p><p>Thanks for shopping with Fashionable Baby Shoes!</p>`;
-        // Send email without blocking the response to M-Pesa.
-        sendEmail(userEmail, subject, html);
-      }
-    } catch (emailError) {
-      logger.error('Error preparing or sending order confirmation email:', { orderId: order.id, error: emailError.message });
-    }
+    // TODO: Send a confirmation email here.
 
   } catch (dbError) {
     logger.error('DATABASE TRANSACTION ERROR during M-Pesa callback processing:', { checkoutRequestID, error: dbError.message });
@@ -281,38 +264,49 @@ passport.deserializeUser(async (id, done) => {
 });
 
 /**
- * Sends an email using the Resend API.
+ * Sends an email using the configured Nodemailer transporter.
  * @param {string} to - The recipient's email address.
  * @param {string} subject - The subject of the email.
  * @param {string} html - The HTML body of the email.
  */
 async function sendEmail(to, subject, html) {
-  if (!process.env.RESEND_API_KEY) {
-    logger.error("❌ RESEND_API_KEY is not set. Email not sent.", { to, subject });
-    return null; // fail gracefully
-  }
-
+  // This function encapsulates the logic for sending an email using Nodemailer.
   try {
-    const data = await resend.emails.send({
-      from: "Fashionable Baby Shoes <noreply@fashionablebabyshoes.com>", // must be verified sender/domain in Resend
+    let transporter = nodemailer.createTransport({
+      host: process.env.MAIL_HOST,
+      port: parseInt(process.env.MAIL_PORT, 10),
+      secure: process.env.MAIL_SECURE === 'true',
+      auth: {
+        user: process.env.MAIL_USER,
+        pass: process.env.MAIL_PASS,
+      },
+      tls: {
+        // Do not fail on invalid certs
+        rejectUnauthorized: false
+      },
+    });
+
+    // --- Debugging Step: Verify transporter configuration ---
+    // This will check if the host, port, and auth credentials are correct.
+    // If it fails, it will throw an error immediately.
+    try {
+      await transporter.verify();
+    } catch (verifyErr) {
+      console.error('Mailer configuration error:', verifyErr);
+      throw verifyErr; // Stop the process if mailer config is bad
+    }
+
+    await transporter.sendMail({
+      from: '"Fashionable Baby Shoes" <noreply@fashionablebabyshoes.com>',
       to,
       subject,
       html,
     });
-
-    logger.info(`✅ Email sent successfully`, {
-      to,
-      subject,
-      messageId: data?.id || "no-id"
-    });
-    return data;
+    console.log(`Email sent successfully to ${to}`);
   } catch (err) {
-    logger.error(`❌ Failed to send email`, {
-      to,
-      subject,
-      error: err.message || err
-    });
-    return null; // prevent crashing
+    // Re-throw the error so the calling function knows something went wrong.
+    console.error(`Failed to send email to ${to}. Subject: "${subject}". Error:`, err);
+    throw err;
   }
 }
 
@@ -366,29 +360,29 @@ app.get('/api/products/:id', async (req, res) => {
 app.post('/api/register', async (req, res) => {
   const { name, email, password } = req.body;
 
-  logger.info("📩 Incoming /api/register request", { body: { name, email: '***' } });
+  console.log("📩 Incoming /api/register request body:", req.body);
 
   // --- Backend Validation ---
   if (!email || !password || !name) {
-    logger.warn("⚠️ Registration validation failed: Missing fields");
+    console.warn("⚠️ Validation failed: Missing fields");
     return res.status(400).json({ error: 'Name, email, and password are required' });
   }
 
   // Validate email format
   if (!/^\S+@\S+\.\S+$/.test(email)) {
-    logger.warn("⚠️ Registration validation failed: Invalid email format", { email });
+    console.warn("⚠️ Validation failed: Invalid email format", email);
     return res.status(400).json({ error: 'Please enter a valid email address.' });
   }
 
   // Validate password length
   if (password.length < 8) {
-    logger.warn("⚠️ Registration validation failed: Password too short");
+    console.warn("⚠️ Validation failed: Password too short");
     return res.status(400).json({ error: 'Password must be at least 8 characters long.' });
   }
 
   // Validate password complexity (matching frontend)
   if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
-    logger.warn("⚠️ Registration validation failed: Password missing complexity");
+    console.warn("⚠️ Validation failed: Password missing complexity");
     return res.status(400).json({ error: 'Password must contain an uppercase letter, a lowercase letter, and a number.' });
   }
 
@@ -402,16 +396,18 @@ app.post('/api/register', async (req, res) => {
       [name, email, hashedPassword]
     );
 
-    logger.info("✅ User registered successfully", { userId: result.insertId, email });
+    console.log("✅ User registered successfully:", { userId: result.insertId, email });
 
     // Send a welcome email (async, don’t block response)
     const subject = 'Welcome to Fashionable Baby Shoes!';
     const html = `<h1>Welcome, ${name || 'friend'}!</h1><p>Thank you for signing up. We're excited to have you with us. Happy shopping!</p>`;
-    sendEmail(email, subject, html); // The function already handles its own errors and logging.
+    sendEmail(email, subject, html).catch(err => {
+      console.error("📧 Failed to send welcome email:", err);
+    });
 
     res.status(201).json({ success: true, userId: result.insertId });
   } catch (err) {
-    logger.error("❌ Registration failed", { error: err.message, code: err.code });
+    console.error("❌ Registration failed:", err);
 
     if (err.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ error: 'Email already exists' });
@@ -449,16 +445,16 @@ app.post('/api/login', async (req, res) => {
       // Upon successful login, merge the guest cart (if any) into the database.
       mergeCartsOnLogin(req.session, user.id)
         .then(() => {
-          logger.info(`User ${user.id} logged in. Carts merged.`);
+          console.log(`User ${user.id} logged in. Carts merged.`);
           // Send a "welcome back" email
           const subject = 'Welcome Back!';
           const html = `<h1>Welcome back, ${user.name || 'friend'}!</h1><p>We're glad to see you again. Check out our latest arrivals!</p>`;
-          sendEmail(user.email, subject, html); // The function already handles its own errors and logging.
+          sendEmail(user.email, subject, html).catch(console.error);
 
           res.json({ success: true, message: 'Login successful', user: { name: user.name } });
         })
         .catch(mergeErr => {
-          logger.error("Cart merge failed on login", { userId: user.id, error: mergeErr.message });
+          console.error("Cart merge failed on login:", mergeErr);
           res.status(500).json({ error: 'Login successful, but failed to merge cart.' });
         });
 
@@ -504,7 +500,7 @@ app.post('/api/forgot-password', async (req, res) => {
     // This will now catch errors from both the database query and sendEmail.
     // It returns a detailed error to the frontend for easier debugging.
     // IMPORTANT: For production, you might want to revert to a more generic error message.
-    logger.error("FORGOT PASSWORD ERROR", { email, error: err.message });
+    console.error("FORGOT PASSWORD ERROR:", err);
     res.status(500).json({ error: 'Failed to send reset email.', details: err.message });
   }
 });
@@ -931,7 +927,7 @@ app.get('/api/auth/google/callback',
     // Successful authentication. The user is now logged in (req.user exists).
     // Merge guest cart with user account if necessary.
     mergeCartsOnLogin(req.session, req.user.id)
-      .then(() => logger.info(`Cart merged for Google user ${req.user.id}`))
+      .then(() => console.log(`Cart merged for Google user ${req.user.id}`))
       .catch(err => console.error("Google login cart merge failed:", err));
 
     // The user object from Passport contains the necessary details.
