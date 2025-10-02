@@ -1,8 +1,11 @@
 // --- Module Imports ---
-// Configure dotenv to be less noisy and throw an error if it fails to parse.
-const dotenvResult = require('dotenv').config({ quiet: true });
-if (dotenvResult.error) {
-  console.error('FATAL: Error loading .env file', dotenvResult.error);
+// Load environment variables from .env file.
+// This will not throw an error if the file is not found,
+// which is common in production environments where variables are injected directly.
+const dotenvResult = require('dotenv').config();
+if (dotenvResult.error && dotenvResult.error.code !== 'ENOENT') {
+  // We will only throw an error if it's something other than the file not being found.
+  console.error('FATAL: Error parsing .env file', dotenvResult.error);
   process.exit(1);
 }
 const express = require('express');
