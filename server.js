@@ -5,7 +5,6 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
-const nodemailer = require('nodemailer');
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const session = require('express-session');
@@ -13,11 +12,14 @@ const MySQLStore = require('express-mysql-session')(session);
 const axios = require('axios'); // For making HTTP requests to Safaricom API
 const mpesaRoutes = require('./routes/mpesa'); // Import the M-Pesa router
 const logger = require('./logger');
+const { Resend } = require("resend");
 
 
 // --- Express App Initialization ---
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // --- Environment Setup ---
 const isProduction = process.env.NODE_ENV === 'production';
@@ -264,48 +266,24 @@ passport.deserializeUser(async (id, done) => {
 });
 
 /**
- * Sends an email using the configured Nodemailer transporter.
+ * Sends an email using the Resend API.
  * @param {string} to - The recipient's email address.
  * @param {string} subject - The subject of the email.
  * @param {string} html - The HTML body of the email.
  */
 async function sendEmail(to, subject, html) {
-  // This function encapsulates the logic for sending an email using Nodemailer.
   try {
-    let transporter = nodemailer.createTransport({
-      host: process.env.MAIL_HOST,
-      port: parseInt(process.env.MAIL_PORT, 10),
-      secure: process.env.MAIL_SECURE === 'true',
-      auth: {
-        user: process.env.MAIL_USER,
-        pass: process.env.MAIL_PASS,
-      },
-      tls: {
-        // Do not fail on invalid certs
-        rejectUnauthorized: false
-      },
-    });
-
-    // --- Debugging Step: Verify transporter configuration ---
-    // This will check if the host, port, and auth credentials are correct.
-    // If it fails, it will throw an error immediately.
-    try {
-      await transporter.verify();
-    } catch (verifyErr) {
-      console.error('Mailer configuration error:', verifyErr);
-      throw verifyErr; // Stop the process if mailer config is bad
-    }
-
-    await transporter.sendMail({
-      from: '"Fashionable Baby Shoes" <noreply@fashionablebabyshoes.com>',
+    const data = await resend.emails.send({
+      from: "Fashionable Baby Shoes <noreply@fashionablebabyshoes.com>", // change if you verified a domain
       to,
       subject,
       html,
     });
-    console.log(`Email sent successfully to ${to}`);
+
+    logger.info(`✅ Email sent successfully to ${to}`, { to, subject, messageId: data.id });
+    return data;
   } catch (err) {
-    // Re-throw the error so the calling function knows something went wrong.
-    console.error(`Failed to send email to ${to}. Subject: "${subject}". Error:`, err);
+    logger.error(`❌ Failed to send email to ${to}. Subject: "${subject}"`, { to, subject, error: err.message });
     throw err;
   }
 }
