@@ -1,5 +1,10 @@
 // --- Module Imports ---
-require('dotenv').config();
+// Configure dotenv to be less noisy and throw an error if it fails to parse.
+const dotenvResult = require('dotenv').config({ quiet: true });
+if (dotenvResult.error) {
+  console.error('FATAL: Error loading .env file', dotenvResult.error);
+  process.exit(1);
+}
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -25,6 +30,11 @@ const FRONTEND_URL = isProduction ? process.env.FRONTEND_URL_PROD : process.env.
 const GOOGLE_CALLBACK_URL = isProduction ? process.env.GOOGLE_CALLBACK_URL_PROD : process.env.GOOGLE_CALLBACK_URL_DEV;
 
 // --- Resend Initialization ---
+if (!process.env.RESEND_API_KEY) {
+  console.error('FATAL: RESEND_API_KEY is not defined in your .env file.');
+  console.error('The server cannot start without a Resend API key.');
+  process.exit(1); // Exit the process with an error code
+}
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // --- Middleware Setup ---
