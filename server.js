@@ -366,29 +366,29 @@ app.get('/api/products/:id', async (req, res) => {
 app.post('/api/register', async (req, res) => {
   const { name, email, password } = req.body;
 
-  console.log("📩 Incoming /api/register request body:", req.body);
+  logger.info("📩 Incoming /api/register request", { body: { name, email: '***' } });
 
   // --- Backend Validation ---
   if (!email || !password || !name) {
-    console.warn("⚠️ Validation failed: Missing fields");
+    logger.warn("⚠️ Registration validation failed: Missing fields");
     return res.status(400).json({ error: 'Name, email, and password are required' });
   }
 
   // Validate email format
   if (!/^\S+@\S+\.\S+$/.test(email)) {
-    console.warn("⚠️ Validation failed: Invalid email format", email);
+    logger.warn("⚠️ Registration validation failed: Invalid email format", { email });
     return res.status(400).json({ error: 'Please enter a valid email address.' });
   }
 
   // Validate password length
   if (password.length < 8) {
-    console.warn("⚠️ Validation failed: Password too short");
+    logger.warn("⚠️ Registration validation failed: Password too short");
     return res.status(400).json({ error: 'Password must be at least 8 characters long.' });
   }
 
   // Validate password complexity (matching frontend)
   if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
-    console.warn("⚠️ Validation failed: Password missing complexity");
+    logger.warn("⚠️ Registration validation failed: Password missing complexity");
     return res.status(400).json({ error: 'Password must contain an uppercase letter, a lowercase letter, and a number.' });
   }
 
@@ -402,7 +402,7 @@ app.post('/api/register', async (req, res) => {
       [name, email, hashedPassword]
     );
 
-    console.log("✅ User registered successfully:", { userId: result.insertId, email });
+    logger.info("✅ User registered successfully", { userId: result.insertId, email });
 
     // Send a welcome email (async, don’t block response)
     const subject = 'Welcome to Fashionable Baby Shoes!';
@@ -411,7 +411,7 @@ app.post('/api/register', async (req, res) => {
 
     res.status(201).json({ success: true, userId: result.insertId });
   } catch (err) {
-    console.error("❌ Registration failed:", err);
+    logger.error("❌ Registration failed", { error: err.message, code: err.code });
 
     if (err.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ error: 'Email already exists' });
@@ -449,7 +449,7 @@ app.post('/api/login', async (req, res) => {
       // Upon successful login, merge the guest cart (if any) into the database.
       mergeCartsOnLogin(req.session, user.id)
         .then(() => {
-          console.log(`User ${user.id} logged in. Carts merged.`);
+          logger.info(`User ${user.id} logged in. Carts merged.`);
           // Send a "welcome back" email
           const subject = 'Welcome Back!';
           const html = `<h1>Welcome back, ${user.name || 'friend'}!</h1><p>We're glad to see you again. Check out our latest arrivals!</p>`;
@@ -458,7 +458,7 @@ app.post('/api/login', async (req, res) => {
           res.json({ success: true, message: 'Login successful', user: { name: user.name } });
         })
         .catch(mergeErr => {
-          console.error("Cart merge failed on login:", mergeErr);
+          logger.error("Cart merge failed on login", { userId: user.id, error: mergeErr.message });
           res.status(500).json({ error: 'Login successful, but failed to merge cart.' });
         });
 
@@ -504,7 +504,7 @@ app.post('/api/forgot-password', async (req, res) => {
     // This will now catch errors from both the database query and sendEmail.
     // It returns a detailed error to the frontend for easier debugging.
     // IMPORTANT: For production, you might want to revert to a more generic error message.
-    console.error("FORGOT PASSWORD ERROR:", err);
+    logger.error("FORGOT PASSWORD ERROR", { email, error: err.message });
     res.status(500).json({ error: 'Failed to send reset email.', details: err.message });
   }
 });
@@ -931,7 +931,7 @@ app.get('/api/auth/google/callback',
     // Successful authentication. The user is now logged in (req.user exists).
     // Merge guest cart with user account if necessary.
     mergeCartsOnLogin(req.session, req.user.id)
-      .then(() => console.log(`Cart merged for Google user ${req.user.id}`))
+      .then(() => logger.info(`Cart merged for Google user ${req.user.id}`))
       .catch(err => console.error("Google login cart merge failed:", err));
 
     // The user object from Passport contains the necessary details.
