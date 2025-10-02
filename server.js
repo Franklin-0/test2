@@ -272,19 +272,32 @@ passport.deserializeUser(async (id, done) => {
  * @param {string} html - The HTML body of the email.
  */
 async function sendEmail(to, subject, html) {
+  if (!process.env.RESEND_API_KEY) {
+    logger.error("❌ RESEND_API_KEY is not set. Email not sent.", { to, subject });
+    return null; // fail gracefully
+  }
+
   try {
     const data = await resend.emails.send({
-      from: "Fashionable Baby Shoes <noreply@fashionablebabyshoes.com>", // change if you verified a domain
+      from: "Fashionable Baby Shoes <noreply@fashionablebabyshoes.com>", // must be verified sender/domain in Resend
       to,
       subject,
       html,
     });
 
-    logger.info(`✅ Email sent successfully to ${to}`, { to, subject, messageId: data.id });
+    logger.info(`✅ Email sent successfully`, {
+      to,
+      subject,
+      messageId: data?.id || "no-id"
+    });
     return data;
   } catch (err) {
-    logger.error(`❌ Failed to send email to ${to}. Subject: "${subject}"`, { to, subject, error: err.message });
-    throw err;
+    logger.error(`❌ Failed to send email`, {
+      to,
+      subject,
+      error: err.message || err
+    });
+    return null; // prevent crashing
   }
 }
 
