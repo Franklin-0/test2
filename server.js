@@ -1,10 +1,5 @@
-// --- Module Imports ---
-// Load environment variables from .env file.
-// This will not throw an error if the file is not found,
-// which is common in production environments where variables are injected directly.
 const dotenvResult = require('dotenv').config();
 if (dotenvResult.error && dotenvResult.error.code !== 'ENOENT') {
-  // We will only throw an error if it's something other than the file not being found.
   console.error('FATAL: Error parsing .env file', dotenvResult.error);
   process.exit(1);
 }
@@ -18,14 +13,14 @@ const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const session = require('express-session');
 const MySQLStore = require('express-mysql-session')(session);
-const axios = require('axios'); // For making HTTP requests to Safaricom API
-const mpesaRoutes = require('./routes/mpesa'); // Import the M-Pesa router
+const axios = require('axios');
+const mpesaRoutes = require('./routes/mpesa'); 
 const logger = require('./logger');
 
 
 // --- Express App Initialization ---
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 1000;
 
 // --- Environment Setup ---
 const isProduction = process.env.NODE_ENV === 'production';
@@ -48,7 +43,7 @@ const allowedOrigins = [
   process.env.FRONTEND_URL_DEV2,
   'https://testfront2.onrender.com',
   'http://localhost:3000',
-  'http://localhost:5501' // added explicitly for dev
+  'http://localhost:5501' 
 ].filter(Boolean); // Remove undefined values
 
 const corsOptions = {
@@ -68,16 +63,10 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // --- M-Pesa Callback Route ---
-// This route must be placed *before* other middleware like session handlers or broad CORS rules.
-// Safaricom's servers need a clean, public endpoint to post the payment result.
-// We include `express.json()` here specifically because this route is defined before the global body-parser.
 
-/**
- * Middleware to secure the callback endpoint by checking the source IP.
- */
 const safaricomIpCheck = (req, res, next) => {
   const allowedIps = [
-    '196.201.214.200', '196.201.214.206', '196.201.213.114',
+    '196.201.214.200', '196.201.214.206', '196.201.213.114',//need to check after going live
     '196.201.212.127', '196.201.212.138', '196.201.212.129',
     '196.201.212.136', '196.201.213.44', '196.201.213.50',
     '196.201.214.208'
@@ -88,7 +77,7 @@ const safaricomIpCheck = (req, res, next) => {
     requestIp = requestIp.substring(7);
   }
 
-  // ✅ Only enforce IP check if M-Pesa ENV = production
+
   if (process.env.MPESA_ENV === 'production' && !allowedIps.includes(requestIp)) {
     logger.warn(`🚫 Denied callback request from untrusted IP: ${requestIp}`);
     return res.status(403).json({ error: 'Forbidden' });
@@ -180,14 +169,12 @@ app.post("/api/mpesa/stk-callback", express.json(), safaricomIpCheck, async (req
 
 // --- General Middleware ---
 app.use(express.json());
-app.use(bodyParser.json()); // Middleware to parse incoming request bodies in JSON format
+app.use(bodyParser.json()); 
 
 // --- Database Connection ---
 const { db, dbConfig } = require('./db');
 
 // --- Session Setup ---
-// In production, ensure you're running behind a proxy (like Nginx) that handles HTTPS.
-// 'trust proxy' allows Express to trust the X-Forwarded-Proto header.
 if (isProduction) {
   app.set('trust proxy', 1); // trust first proxy
 }
@@ -197,12 +184,12 @@ const sessionStore = new MySQLStore(dbConfig);
 app.use(session({
   secret: process.env.SESSION_SECRET || 'a_very_long_and_super_random_secret_string_!@#$_for_security',
   resave: false,
-  saveUninitialized: false, // More secure default, saves session only when modified
+  saveUninitialized: false, 
   cookie: { 
-    secure: isProduction, // Use secure cookies in production (requires HTTPS)
+    secure: isProduction, 
     httpOnly: true, // Prevents client-side JS from accessing the cookie
     sameSite: isProduction ? 'none' : 'lax', // 'none' for cross-domain requests in prod, 'lax' for dev
-    maxAge: 24 * 60 * 60 * 1000 // e.g., 24 hours
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
   },
   store: sessionStore,
 }));
@@ -212,19 +199,15 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 // --- Passport Google Strategy ---
-// This configures how Passport authenticates users with their Google accounts.
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    // This is the URL Google will redirect to after the user grants permission.
     callbackURL: GOOGLE_CALLBACK_URL
   },
   async (accessToken, refreshToken, profile, done) => {
-    // This function is called after the user successfully authenticates with Google.
-    // We need to find or create a user in our database.
-    const { id, displayName, emails, photos } = profile;
+
+    const { id, displayName, emails, } = profile;
     const email = emails[0].value;
-    const profilePicture = photos[0].value;
 
     try {
       // Check if a user already exists with this Google ID or email address.
@@ -233,20 +216,17 @@ passport.use(new GoogleStrategy({
       if (rows.length > 0) {
         // User exists, log them in.
         const user = rows[0];
-        user.isNewUser = false; // Mark as an existing user
-        // If they signed up with email first, link their Google ID to their existing account.
+        user.isNewUser = false; 
         if (!user.google_id) {
           await db.query('UPDATE users SET google_id = ? WHERE id = ?', [id, user.id]);
         }
 
-        return done(null, user); // Passport proceeds with the user object
+        return done(null, user);
       } else {
-        // New user, create a new account for them in the database.
         const newUser = {
           google_id: id,
           email,
           name: displayName,
-          profile_picture: profilePicture
         };
         const [result] = await db.query('INSERT INTO users SET ?', newUser);
         newUser.id = result.insertId;
@@ -260,20 +240,17 @@ passport.use(new GoogleStrategy({
         return done(null, newUser); // Passport proceeds with the newly created user object
       }
     } catch (err) {
-      return done(err, null); // An error occurred, pass it to Passport
+      return done(err, null); 
     }
   }
 ));
 
 // --- Passport Serialization/Deserialization ---
-// Determines what user data should be stored in the session. Here, we only store the user's ID.
 passport.serializeUser((user, done) => done(null, user.id));
-
-// Retrieves the full user object from the database based on the ID stored in the session.
 passport.deserializeUser(async (id, done) => {
   try {
     const [[user]] = await db.query('SELECT * FROM users WHERE id = ?', [id]); // Find user by ID
-    done(null, user); // Provide the full user object to Passport
+    done(null, user); 
   } catch (err) {
     done(err, null);
   }
@@ -286,11 +263,10 @@ passport.deserializeUser(async (id, done) => {
  * @param {string} html - The HTML body of the email.
  */
 async function sendEmail(to, subject, html) {
-  // This function encapsulates the logic for sending an email using Resend.
   try {
     const { data, error } = await resend.emails.send({
       // IMPORTANT: You must use a verified domain with Resend.
-      // The 'onboarding@resend.dev' is for testing only.
+      // The 'onboarding@resend.dev' is for testing only.                     
       // Replace with your own, e.g., 'noreply@yourdomain.com'
       from: 'Fashionable Baby Shoes <onboarding@resend.dev>',
       to: [to], // Resend expects an array of recipients
@@ -313,16 +289,9 @@ async function sendEmail(to, subject, html) {
 }
 
 // --- API Routes ---
-
-// Test route
-app.get('/', (req, res) => {
-  res.send('Backend is running');
-});
-
 // GET /api/products - Fetches all products from the database.
 app.get('/api/products', async (req, res) => {
   try {
-    // Join products with their available sizes from the new product_size table
     const [products] = await db.query(`
       SELECT 
         p.*, 
@@ -337,11 +306,10 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
-// GET /api/products/:id - Fetches a single product by its unique ID.
+// GET /api/products/:id 
 app.get('/api/products/:id', async (req, res) => {
   try {
     const productId = req.params.id;
-    // Fetch the product and aggregate its available sizes
     const [[product]] = await db.query(`
       SELECT 
         p.*, 
@@ -420,7 +388,7 @@ app.post('/api/register', async (req, res) => {
 });
 
 
-// POST /api/login - Handles user login with email and password.
+// POST /api/login 
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
@@ -436,14 +404,10 @@ app.post('/api/login', async (req, res) => {
     // Compare the provided password with the hashed password in the database.
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
-
-    // Use passport's req.login() to establish a session.
-    // This calls passport.serializeUser() and saves the user ID to the session.
     req.login(user, (err) => {
       if (err) {
         return res.status(500).json({ error: 'Could not log in user.' });
       }
-      
       // Upon successful login, merge the guest cart (if any) into the database.
       mergeCartsOnLogin(req.session, user.id)
         .then(() => {
@@ -477,31 +441,20 @@ app.post('/api/forgot-password', async (req, res) => {
   try {
     const [[user]] = await db.query('SELECT * FROM users WHERE email = ?', [email]);
     if (!user) {
-      // To prevent "email enumeration" attacks, we send a success response even if the user doesn't exist.
-      // This way, an attacker can't figure out which emails are registered.
       return res.json({ success: true, message: 'If a user with that email exists, a reset link has been sent.' });
     }
-
-    const token = crypto.randomBytes(32).toString('hex'); // Generate a secure, random token.
-    const expires = Date.now() + 3600000; // Token expires in 1 hour (3600000 ms).
-
+    const token = crypto.randomBytes(32).toString('hex'); 
+    const expires = Date.now() + 3600000; // Token expires in 1 hour 
     // Store the token and its expiration date in the database for the user.
     await db.query('UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?', [token, expires, user.id]);
-
     const resetUrl = `${FRONTEND_URL}/Frontend-babyshoe/reset-password.html?token=${token}`;
     const subject = 'Password Reset Request';
     const html = `<p>You requested a password reset. Click the link below to reset your password:</p><a href="${resetUrl}">${resetUrl}</a><p>This link will expire in one hour.</p>`;
 
-    // Send email in the background without waiting for it to complete
-    // By using 'await', we ensure that if sendEmail fails,
-    // the error is caught by this try/catch block.
     await sendEmail(user.email, subject, html);
     res.json({ success: true, message: 'If a user with that email exists, a reset link has been sent.' });
 
   } catch (err) {
-    // This will now catch errors from both the database query and sendEmail.
-    // It returns a detailed error to the frontend for easier debugging.
-    // IMPORTANT: For production, you might want to revert to a more generic error message.
     console.error("FORGOT PASSWORD ERROR:", err);
     res.status(500).json({ error: 'Failed to send reset email.', details: err.message });
   }
@@ -637,13 +590,11 @@ app.post('/api/cart', async (req, res) => {
     }
 
     // --- Logic for Guest Users (not logged in) ---
-    // 2. Create a unique ID for the cart item (product + size).
     const cartItemId = `${product.id}-${size}`;
     const existingItem = req.session.cart.find(item => item.id === cartItemId);
 
     if (existingItem) {
-      // If item already exists, just update its quantity.
-      existingItem.quantity += parseInt(quantity, 10);
+      existingItem.quantity += parseInt(quantity, 10);// If item already exists, just update its quantity.
     } else {
       // If it's a new item, add it to the cart.
       req.session.cart.push({
@@ -798,14 +749,9 @@ app.post('/api/cart/merge', async (req, res) => {
 });
 
 // --- M-Pesa Routes ---
-// Mount the M-Pesa router under its own specific path for clarity and isolation.
 app.use('/api/mpesa', mpesaRoutes);
 
 // --- Favourites API Routes ---
-
-/**
- * GET /api/favourites - Fetches all favourite items for the logged-in user.
- */
 app.get('/api/favourites', ensureAuthenticated, async (req, res) => {
   try {
     const [favourites] = await db.query(
@@ -892,7 +838,7 @@ app.delete('/api/favourites/:productId', ensureAuthenticated, async (req, res) =
 async function mergeCartsOnLogin(session, userId) {
   const guestCart = session.cart;
   if (!guestCart || guestCart.length === 0) {
-    return; // Nothing to merge
+    return; 
   }
 
   console.log(`Merging ${guestCart.length} guest cart items for user ${userId}.`);
@@ -904,7 +850,6 @@ async function mergeCartsOnLogin(session, userId) {
       VALUES (?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)
     `;
-    // Ensure all values are valid before querying
     return db.query(sql, [userId, productId, size, item.quantity, item.price]);
   });
 
@@ -915,31 +860,33 @@ async function mergeCartsOnLogin(session, userId) {
 
 
 // --- Google Auth Routes ---
-
-// GET /auth/google - The route the user visits to start the Google login process.
-// Passport redirects them to Google's authentication screen.
 app.get('/api/auth/google',
   passport.authenticate('google', { scope: ['profile', 'email'] })
 );
 
 // GET /auth/google/callback - The route Google redirects to after the user authenticates.
-app.get('/api/auth/google/callback', 
-  passport.authenticate('google', { failureRedirect: `${FRONTEND_URL}/login.html` }), // If Google auth fails, redirect to login page.
-  (req, res) => {
-    // Successful authentication. The user is now logged in (req.user exists).
-    // Merge guest cart with user account if necessary.
-    mergeCartsOnLogin(req.session, req.user.id)
-      .then(() => console.log(`Cart merged for Google user ${req.user.id}`))
-      .catch(err => console.error("Google login cart merge failed:", err));
+app.get(
+  '/api/auth/google/callback',
+  passport.authenticate('google', { failureRedirect: `${FRONTEND_URL}/login.html` }),
+  async (req, res) => {
+    try {
+      const user = req.user;
+      const name = user.name || 'User';
+      const isNewUser = user.isNewUser || false;
 
-    // The user object from Passport contains the necessary details.
-    const user = req.user;
-    const name = user.name || 'User';
-    const isNewUser = user.isNewUser || false;
-    // Redirect to a simple, clean path on the frontend.
-    res.redirect(`${FRONTEND_URL}/auth-callback.html?name=${encodeURIComponent(name)}&isNewUser=${isNewUser}`);
+      // Merge guest cart if needed
+      await mergeCartsOnLogin(req.session, user.id);
+      console.log(`Cart merged for Google user ${user.id}`);
+
+      // Redirect to the correct frontend callback page path
+      res.redirect(`${FRONTEND_URL}/Frontend-babyshoe/auth-callback.html?name=${encodeURIComponent(name)}&isNewUser=${isNewUser}`);
+    } catch (err) {
+      console.error("Google login cart merge failed:", err);
+      res.redirect(`${FRONTEND_URL}/login.html`);
+    }
   }
 );
+
 
 // --- Logout Route ---
 // POST /api/logout - Logs the user out.
@@ -958,7 +905,6 @@ app.post('/api/logout', (req, res, next) => {
 
 
 // --- Check Authentication Status Route ---
-// GET /api/auth/status - A route for the frontend to check if the user is currently logged in.
 app.get('/api/auth/status', (req, res) => {
   if (req.isAuthenticated()) {
     res.json({

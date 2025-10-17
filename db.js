@@ -37,7 +37,11 @@ const db = mysql.createPool(dbConfig);
     console.log('✅ Database connected successfully!');
     connection.release();
   } catch (err) {
-    console.error('❌ Failed to connect to database:', err);
+    console.error('❌ Failed to connect to database.');
+    if (!isProduction) {
+      console.error('Used connection config:', { host: dbConfig.host, port: dbConfig.port, user: dbConfig.user, database: dbConfig.database });
+    }
+    console.error(err);
   }
 })();
 
